@@ -32,6 +32,7 @@ Environment Variables:
 """
 
 import os
+import shlex
 import sys
 import argparse
 from pathlib import Path
@@ -197,9 +198,9 @@ For full functionality, use the TinyGrad examples directly:
     print(f"\n🎨 To generate image with prompt: \"{args.prompt}\"")
     print("\nRun the TinyGrad Stable Diffusion example directly:")
     print(f"  cd vendor/tinygrad/examples")
-    print(f"  CUDA=1 python stable_diffusion.py --prompt \"{args.prompt}\" --out {args.output}")
+    print(f"  CUDA=1 python stable_diffusion.py --prompt {shlex.quote(args.prompt)} --out {shlex.quote(args.output)}")
     print("\nOr for SDXL (higher quality):")
-    print(f"  CUDA=1 python sdxl.py --prompt \"{args.prompt}\"")
+    print(f"  CUDA=1 python sdxl.py --prompt {shlex.quote(args.prompt)}")
     
     # Show memory status
     check_sd_feasibility()

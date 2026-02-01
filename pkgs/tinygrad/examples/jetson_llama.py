@@ -31,6 +31,7 @@ Environment Variables:
 """
 
 import os
+import shlex
 import sys
 import argparse
 from pathlib import Path
@@ -187,9 +188,9 @@ Examples:
     print(f"\n🦙 To run LLaMA inference with model at: {args.model}")
     print("\nRun the TinyGrad LLaMA example directly:")
     print(f"  cd vendor/tinygrad/examples")
-    print(f"  CUDA=1 python llama.py --model {args.model} --prompt \"{args.prompt}\"")
+    print(f"  CUDA=1 python llama.py --model {shlex.quote(args.model)} --prompt {shlex.quote(args.prompt)}")
     print("\nOr for LLaMA 3:")
-    print(f"  CUDA=1 python llama3.py --model {args.model} --prompt \"{args.prompt}\"")
+    print(f"  CUDA=1 python llama3.py --model {shlex.quote(args.model)} --prompt {shlex.quote(args.prompt)}")
     
     # Show memory status
     check_model_feasibility()
