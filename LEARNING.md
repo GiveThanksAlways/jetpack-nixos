@@ -520,6 +520,37 @@ lsusb | grep -i nvidia
 
 # 4. Flash (uses initrd-flash method)
 sudo ./result/bin/initrd-flash-orin-agx-devkit-cross
+
+# 5. Build NixOS Installer ISO (takes time - cross-compiling ARM64)
+nix build .#iso_minimal
+
+# 6. Verify ISO was built
+ls -lh ./result/iso/
+# Should show: nixos-minimal-25.11.YYYYMMDD.HASH-aarch64-linux.iso (~1.3G)
+
+# 7. Write ISO to USB drive (THIS WILL ERASE ALL DATA ON THE USB DRIVE!)
+# First, identify your USB drive:
+lsblk -o NAME,SIZE,MODEL,TRAN,VENDOR | grep -E "NAME|usb|sd"
+
+# Set the USB device path (DOUBLE-CHECK THIS IS CORRECT!)
+export DEV_USB="/dev/sdf"  # Replace with your actual USB device
+
+# Verify you have the right device before proceeding:
+lsblk $DEV_USB
+
+# Write the ISO (This destroys all data on $DEV_USB!)
+sudo dd if=./result/iso/nixos-minimal-*.iso of=$DEV_USB bs=1M oflag=sync status=progress
+
+# Wait for dd to complete (shows progress), then eject safely:
+sync
+sudo eject $DEV_USB
+
+# 8. Boot Jetson from USB installer
+# - just plug into any USB port. I did the bottom one next to the ethernet port
+
+# 9. Install NixOS to internal storage
+# Follow the NixOS installation guide (partitioning, configuration, etc.)
+# See README.md "Installing NixOS" section for jetpack-specific config 
 ```
 
 ### Flashing from WSL2 (Windows)
