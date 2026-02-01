@@ -34,6 +34,7 @@ in
     ./devices.nix
     ./flash-script.nix
     ./graphics.nix
+    ./imx219-camera.nix
     ./nvargus-daemon.nix
     ./nvfancontrol.nix
     ./nvidia-container-toolkit.nix
