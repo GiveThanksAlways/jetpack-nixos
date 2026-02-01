@@ -50,12 +50,12 @@ This repository packages NVIDIA's JetPack SDK for NixOS, enabling you to run Nix
 
 ### What Each Top-Level File Does
 
-| File | Purpose |
-|------|---------|
-| `flake.nix` | Declares inputs (nixpkgs) and outputs (packages, NixOS configs, overlays) |
-| `overlay.nix` | Maps JetPack major versions to overlays |
-| `mk-overlay.nix` | The factory that builds `nvidia-jetpack` package set for a given L4T version |
-| `overlay-with-config.nix` | Applies device-specific configuration to the overlay |
+| File                      | Purpose                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `flake.nix`               | Declares inputs (nixpkgs) and outputs (packages, NixOS configs, overlays)    |
+| `overlay.nix`             | Maps JetPack major versions to overlays                                      |
+| `mk-overlay.nix`          | The factory that builds `nvidia-jetpack` package set for a given L4T version |
+| `overlay-with-config.nix` | Applies device-specific configuration to the overlay                         |
 
 ---
 
@@ -418,11 +418,11 @@ modules/default.nix          # Core: kernel, firmware, udev
 
 ### Version Mapping
 
-| JetPack | L4T Version | Kernel Dir | Devices |
-|---------|-------------|------------|---------|
-| 5.x | r35.x | `pkgs/kernels/r35/` | Xavier, Orin |
-| 6.x | r36.x | `pkgs/kernels/r36/` | Orin |
-| 7.x | r38.x | `pkgs/kernels/r38/` | Thor |
+| JetPack | L4T Version | Kernel Dir          | Devices      |
+| ------- | ----------- | ------------------- | ------------ |
+| 5.x     | r35.x       | `pkgs/kernels/r35/` | Xavier, Orin |
+| 6.x     | r36.x       | `pkgs/kernels/r36/` | Orin         |
+| 7.x     | r38.x       | `pkgs/kernels/r38/` | Thor         |
 
 ### Kernel Package Structure
 
@@ -555,6 +555,7 @@ sudo eject $DEV_USB
 ### Installing NixOS to eMMC (No SSD)
 
 The Jetson eMMC contains firmware partitions that **must not be destroyed**:
+
 ```
 mmcblk0p1  (57.8G)  = UDA (User Data Area) - SAFE to use for NixOS
 mmcblk0p2-p15       = Firmware partitions - DO NOT TOUCH!
@@ -562,6 +563,7 @@ mmcblk0boot0/boot1  = Boot partitions - DO NOT TOUCH!
 ```
 
 **What happens if you mess up?**
+
 - If you only format `mmcblk0p1`: You can always reinstall, device is fine
 - If you destroy the partition table (`parted mklabel gpt`): You need to re-flash firmware from host PC
 - The UEFI firmware lives in flash memory, not filesystem - device is NOT bricked, just needs re-flash
@@ -716,6 +718,7 @@ lsblk
 ```
 
 You should see:
+
 - `/dev/nvme0n1` - The NVMe SSD (install target)
 - `/dev/mmcblk0` - eMMC with firmware partitions
 - `/dev/sda` - USB installer drive
@@ -784,152 +787,63 @@ nixos-generate-config --root /mnt
 
 #### Step 6: Edit Your Configuration
 
-`nixos-generate-config` already created these files:
-- `/mnt/etc/nixos/configuration.nix` - **Edit this** to add Jetson support
-- `/mnt/etc/nixos/hardware-configuration.nix` - Auto-generated, don't edit
+`nixos-generate-config` created two files:
 
-You need to **add the jetpack-nixos lines** to the existing configuration.nix.
+- `/mnt/etc/nixos/configuration.nix` - Edit this to add Jetson support
+- `/mnt/etc/nixos/hardware-configuration.nix` - Auto-generated, do not edit
 
----
+**Option A: Traditional (simpler)**
 
-** TRADITIONAL (simpler, recommended for first install):**
+Edit the configuration and add the `fetchTarball` import plus the Jetson settings.
+Then run `nixos-install`.
 
-```bash
-vim /mnt/etc/nixos/configuration.nix
-```
+**Option B: Flake-based (recommended for version pinning)**
 
-Add these lines to the `imports` section (after `./hardware-configuration.nix`):
-
-```nix
-  imports =
-    [ # Include the results of the hardware scan.
-      ./hardware-configuration.nix
-
-      # ADD THIS LINE for Jetson support:
-      (builtins.fetchTarball "https://github.com/anduril/jetpack-nixos/archive/master.tar.gz" + "/modules/default.nix")
-    ];
-```
-
-Then add these settings anywhere in the file (before the closing `}`):
-
-```nix
-  # =============================================================================
-  # JETSON HARDWARE CONFIGURATION (Required - from jetpack-nixos README)
-  # =============================================================================
-
-  hardware.nvidia-jetpack.enable = true;
-  hardware.nvidia-jetpack.som = "orin-agx";  # Jetson AGX Orin Developer Kit
-  hardware.nvidia-jetpack.carrierBoard = "devkit";
-
-  # Enable GPU support - needed even for CUDA and containers
-  hardware.graphics.enable = true;
-
-  # =============================================================================
-  # USER ACCOUNT (customize as needed)
-  # =============================================================================
-
-  users.users.spencer = {
-    isNormalUser = true;
-    extraGroups = [
-      "wheel"           # sudo access
-      "video"           # GPU access for graphics
-      "render"          # GPU access for CUDA compute
-      "networkmanager"  # Network configuration
-    ];
-    initialPassword = "changeme";  # CHANGE THIS AFTER FIRST LOGIN!
-  };
-
-  # Enable SSH for remote access
-  services.openssh.enable = true;
-
-  # Enable flakes (optional but recommended)
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
-```
-
-Then install:
-```bash
-nixos-install
-```
-
----
-
-**FLAKE-BASED (better version pinning):**
-
-First, edit the existing configuration.nix (do NOT add the fetchTarball import - flake handles it):
+1. Edit `/mnt/etc/nixos/configuration.nix` and add the Jetson settings (do NOT add the fetchTarball import; the flake handles module loading):
 
 ```bash
 vim /mnt/etc/nixos/configuration.nix
 ```
 
-Add the Jetson settings (same as above, but WITHOUT the fetchTarball import):
+Add these lines anywhere before the closing `}`:
 
 ```nix
-  # JETSON HARDWARE CONFIGURATION
+  # Jetson Hardware (required)
   hardware.nvidia-jetpack.enable = true;
   hardware.nvidia-jetpack.som = "orin-agx";
   hardware.nvidia-jetpack.carrierBoard = "devkit";
   hardware.graphics.enable = true;
 
-  # USER ACCOUNT
+  # User account
   users.users.spencer = {
     isNormalUser = true;
     extraGroups = [ "wheel" "video" "render" "networkmanager" ];
     initialPassword = "changeme";
   };
 
+  # Services
   services.openssh.enable = true;
   nix.settings.experimental-features = [ "nix-command" "flakes" ];
 ```
 
-Then create the flake.nix file:
+1. Create the flake file using the template in this repo:
 
 ```bash
 vim /mnt/etc/nixos/flake.nix
+# Paste contents from temp/flake.nix
 ```
 
-Paste this content (or copy from `temp/flake.nix`):
+1. Install:
 
-```nix
-{
-  description = "NixOS configuration for Jetson AGX Orin";
-
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    jetpack-nixos.url = "github:anduril/jetpack-nixos/master";
-    jetpack-nixos.inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  outputs = { self, nixpkgs, jetpack-nixos, ... }: {
-    nixosConfigurations.jetson = nixpkgs.lib.nixosSystem {
-      system = "aarch64-linux";
-      modules = [
-        jetpack-nixos.nixosModules.default
-        ./configuration.nix
-      ];
-    };
-  };
-}
-```
-
-Then install:
 ```bash
-nixos-install --flake /mnt/etc/nixos#jetson
+nixos-install --flake /mnt/etc/nixos#nixos
 ```
-
----
 
 #### Step 7: Install NixOS
 
-The install command depends on which approach you chose above:
-- **Traditional:** `nixos-install`
-- **Flake:** `nixos-install --flake /mnt/etc/nixos#jetson`
+This will download and build all packages (10-30+ minutes), install the system to /mnt, and prompt for a root password at the end.
 
-This will:
-1. Download and build all packages (takes 10-30+ minutes)
-2. Install the system to /mnt
-3. Ask you to set the root password at the end
-
-If it fails, fix the configuration and re-run `nixos-install`.
+If it fails, fix the configuration and re-run the install command.
 
 #### Step 8: Reboot
 
@@ -937,32 +851,25 @@ If it fails, fix the configuration and re-run `nixos-install`.
 reboot
 ```
 
-Remove the USB drive when the system powers off. The Jetson should boot from the NVMe SSD.
+Remove the USB drive when the system powers off.
 
 #### Step 9: Post-Installation
 
 ```bash
 # Login as spencer (password: changeme)
-
-# IMMEDIATELY change your password!
+# Change your password immediately
 passwd
 
 # Verify Jetson hardware
 cat /proc/device-tree/model
-# Should show: NVIDIA Jetson AGX Orin Developer Kit
 
-# Check GPU devices exist
+# Check GPU devices
 ls -la /dev/nvidia*
 
-# Future system updates (depends on which approach you used):
+# System updates (flake approach)
+sudo nixos-rebuild switch --flake /etc/nixos#nixos
 
-# Traditional approach:
-sudo nixos-rebuild switch
-
-# Flake approach:
-sudo nixos-rebuild switch --flake /etc/nixos#jetson
-
-# Update flake inputs (flake approach only):
+# Update flake inputs
 cd /etc/nixos
 sudo nix flake update
 sudo nixos-rebuild switch --flake .#jetson
@@ -974,23 +881,7 @@ If you started with the Traditional approach and want to switch to Flakes later:
 
 1. Create `/etc/nixos/flake.nix` (copy from `temp/flake.nix`)
 2. Edit `/etc/nixos/configuration.nix` and **comment out** the fetchTarball import
-3. Run: `sudo nixos-rebuild switch --flake /etc/nixos#jetson`
-
-### Note on Determinate Nix
-
-**On NixOS:** You don't need the Determinate Nix installer - NixOS has nix built-in.
-The configuration above already enables the same features Determinate enables:
-- `nix-command` - new unified CLI
-- `flakes` - flake support
-- Auto store optimization
-- Garbage collection
-
-**On non-NixOS systems** (like your dev machine, macOS, Ubuntu):
-Use the Determinate installer for a better experience:
-```bash
-curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh
-```
-
+3. Run: `sudo nixos-rebuild switch --flake /etc/nixos#nixos`
 
 ### Flashing from WSL2 (Windows)
 
@@ -1020,6 +911,8 @@ During flashing, the Jetson disconnects and reconnects multiple times. Sometimes
 **Practical approach:** Keep multiple PowerShell Admin windows open and monitor with `usbipd list`.
 Listen for the USB disconnect/reconnect sound cues from Windows, then check which busid changed.
 
+> Note: seems like at most it was three, so once you have --auto-attach running for three different ones, that should be it
+
 ```powershell
 # When you see a new device appear (e.g., COM10 on busid 1-3):
 usbipd bind --busid 1-3
@@ -1033,39 +926,32 @@ usbipd attach --wsl --hardware-id 0955:7045 --auto-attach  # Tegra On-Platform O
 #### The "Flashing may have failed" False Alarm
 
 Even when flashing succeeds, WSL2 may report "Flashing may have failed" because:
+
 - The serial connection times out during the final reboot
 - The Jetson disconnected before the expect script could confirm success
 
 **Check the serial console** - if you see `Jetson UEFI firmware (version X.X.X)` and a boot menu,
 the flash succeeded regardless of what the script reported.
 
-#### Tips for WSL2 Flashing Success
-
-1. **Use `--auto-attach`** on all NVIDIA devices before starting
-2. **Keep `usbipd list` running** in a separate PowerShell window
-3. **Listen for USB sounds** - Windows plays a sound on disconnect/reconnect
-4. **Be ready to rebind** - have `usbipd bind --busid X-X` ready to paste
-5. **Watch the serial console** - it shows the real status, not the flash script
-6. **Consider native Linux** - a Linux USB stick or VM is more reliable for flashing
-
 ### What Gets Flashed
 
-| Partition | Contents | Source |
-|-----------|----------|--------|
-| `esp` | UEFI firmware (EDK2) | `pkgs/uefi-firmware/` |
-| `A_kernel` | Linux kernel | `pkgs/kernels/r36/` |
-| `A_kernel-dtb` | Device tree blobs | Extracted from kernel |
-| `OP-TEE` | Secure world | `pkgs/optee/` |
-| `BCT` | Boot configuration | Flash tools |
+| Partition      | Contents             | Source                |
+| -------------- | -------------------- | --------------------- |
+| `esp`          | UEFI firmware (EDK2) | `pkgs/uefi-firmware/` |
+| `A_kernel`     | Linux kernel         | `pkgs/kernels/r36/`   |
+| `A_kernel-dtb` | Device tree blobs    | Extracted from kernel |
+| `OP-TEE`       | Secure world         | `pkgs/optee/`         |
+| `BCT`          | Boot configuration   | Flash tools           |
 
 ### Understanding Initrd Flash (Why It Exists)
 
 There are two ways to flash a Jetson from a host PC:
 
 #### Traditional Flash (Old Method)
+
 ```
 ┌──────────┐  USB Recovery Protocol   ┌──────────┐
-│  Host PC │ ──────────────────────▶  │  Jetson  │
+│  Host PC │ ──────────────────────>  │  Jetson  │
 │          │   (slow, proprietary)    │  (APX)   │
 └──────────┘                          └──────────┘
 ```
@@ -1074,27 +960,29 @@ The host PC uses NVIDIA's `tegrarcm_v2` tool to push data over a proprietary USB
 This is **slow** (~30-60 minutes for full flash) and unreliable with NVMe drives.
 
 #### Initrd Flash (New Method)
+
 ```
 Phase 1: Boot a minimal Linux on the Jetson
 ┌──────────┐   RCM Boot    ┌──────────┐
-│  Host PC │ ────────────▶ │  Jetson  │  Boots initrd into RAM
+│  Host PC │ ────────────> │  Jetson  │  Boots initrd into RAM
 └──────────┘               └──────────┘
                                  │
 Phase 2: Jetson exposes its storage as USB Mass Storage
-                                 ▼
+                                 v
 ┌──────────┐   USB Gadget  ┌──────────┐
-│  Host PC │ ◀──────────── │  Jetson  │  "I'm a USB drive now!"
+│  Host PC │ <──────────── │  Jetson  │  "I'm a USB drive now!"
 │          │  Block device │ (initrd) │
 └──────────┘               └──────────┘
                                  │
 Phase 3: Host writes partitions like a regular disk
-                                 ▼
+                                 v
 ┌──────────┐   dd/mtd-utils ┌──────────┐
-│  Host PC │ ─────────────▶ │  Jetson  │  Fast block writes!
+│  Host PC │ ─────────────> │  Jetson  │  Fast block writes!
 └──────────┘                └──────────┘
 ```
 
 **Why is this faster?**
+
 - USB Mass Storage is a standard protocol - the kernel treats the Jetson's eMMC/NVMe as a local disk
 - Block writes are much faster than the proprietary RCM protocol
 - Uses standard Linux tools (`dd`, `mtd-utils`) instead of NVIDIA's closed-source tools
@@ -1109,6 +997,7 @@ Normally, your PC is a USB **host** and devices (keyboard, mouse, phone) are USB
 But some devices can switch roles - your phone can be a peripheral (file transfer) or a host (USB OTG).
 
 The Jetson in initrd mode becomes a USB **peripheral** that presents itself as:
+
 1. A **USB Mass Storage device** (its internal storage appears as a disk on your PC)
 2. A **USB Serial device** (for communication with the flash script)
 
@@ -1127,6 +1016,7 @@ The Jetson in initrd mode becomes a USB **peripheral** that presents itself as:
 ```
 
 The initrd configures the Jetson's USB controller in "gadget mode" with:
+
 - Vendor string: `NixOS`
 - Product string: `serial_0`
 
@@ -1148,6 +1038,7 @@ expect -f /nix/store/.../expect-initrd-flash
 ```
 
 The `expect` script sends commands over the serial port to:
+
 1. Query the board info (`boardspec: 3701-300-0005--1---`)
 2. Erase flash partitions (`Erasing /dev/mtd0...`)
 3. Write firmware images (`Step 1/62... Writing mb1...`)
@@ -1156,10 +1047,12 @@ The `expect` script sends commands over the serial port to:
 #### Why Serial Instead of Just Mass Storage?
 
 The Jetson exposes **both** serial and mass storage because:
+
 - **Serial**: For control/status messages and coordinating the flash sequence
 - **Mass Storage**: For the actual data transfer (fast block writes)
 
 Think of it like this:
+
 - Serial = "control channel" (small messages: "erase this", "write that", "done!")
 - Mass Storage = "data channel" (large payloads: actual firmware blobs)
 
@@ -1171,15 +1064,15 @@ Think of it like this:
 
 Core NVIDIA libraries from Debian packages:
 
-| Package | Purpose | Key Files |
-|---------|---------|-----------|
-| `l4t-core` | Base libraries | `libnvrm.so`, `libnvos.so` |
-| `l4t-cuda` | CUDA runtime | `libcuda.so`, `libnvcudla.so` |
-| `l4t-multimedia` | Video encode/decode | `libnvmm.so`, gstreamer plugins |
-| `l4t-camera` | Argus camera API | `libnvargus.so` |
-| `l4t-3d-core` | OpenGL ES | `libGLESv2_nvidia.so` |
-| `l4t-gbm` | GBM (buffer management) | `libgbm_nvidia.so` |
-| `l4t-nvpmodel` | Power management | `nvpmodel` binary |
+| Package          | Purpose                 | Key Files                       |
+| ---------------- | ----------------------- | ------------------------------- |
+| `l4t-core`       | Base libraries          | `libnvrm.so`, `libnvos.so`      |
+| `l4t-cuda`       | CUDA runtime            | `libcuda.so`, `libnvcudla.so`   |
+| `l4t-multimedia` | Video encode/decode     | `libnvmm.so`, gstreamer plugins |
+| `l4t-camera`     | Argus camera API        | `libnvargus.so`                 |
+| `l4t-3d-core`    | OpenGL ES               | `libGLESv2_nvidia.so`           |
+| `l4t-gbm`        | GBM (buffer management) | `libgbm_nvidia.so`              |
+| `l4t-nvpmodel`   | Power management        | `nvpmodel` binary               |
 
 ### CUDA Extensions (`pkgs/cuda-extensions/`)
 
@@ -1209,11 +1102,13 @@ nsight_compute_target # Kernel profiler agent (runs on Jetson)
 ### Adding a New L4T Package
 
 1. **Verify it exists in source info:**
+
    ```bash
    grep "nvidia-l4t-yourpkg" sourceinfo/r36.4-debs.json
    ```
 
 2. **Create the package file:**
+
    ```nix
    # pkgs/l4t/l4t-yourpkg.nix
    { buildFromDebs, l4t-core, someOtherDep }:
@@ -1297,12 +1192,13 @@ name = c.som
 ```
 
 Examples:
-| Name | SOM | Carrier | JetPack |
-|------|-----|---------|---------|
-| `orin-agx-devkit` | Orin AGX | Developer Kit | 6 (default) |
-| `orin-agx-devkit-jp5` | Orin AGX | Developer Kit | 5 |
-| `orin-vim-super-devkit` | Orin vim (Super) | Developer Kit | 6 |
-| `xavier-nx-devkit` | Xavier NX | Developer Kit | 5 |
+
+| Name                    | SOM              | Carrier       | JetPack     |
+| ----------------------- | ---------------- | ------------- | ----------- |
+| `orin-agx-devkit`       | Orin AGX         | Developer Kit | 6 (default) |
+| `orin-agx-devkit-jp5`   | Orin AGX         | Developer Kit | 5           |
+| `orin-vim-super-devkit` | Orin vim (Super) | Developer Kit | 6           |
+| `xavier-nx-devkit`      | Xavier NX        | Developer Kit | 5           |
 
 ### Key Flake Outputs
 
@@ -1337,12 +1233,12 @@ nix build github:anduril/jetpack-nixos#flash-orin-agx-devkit
 
 ### JetPack Version Selection
 
-| Your Device | Recommended | Command |
-|-------------|-------------|---------|
-| Orin AGX/NX/vim | JetPack 6 | `nix build .#flash-orin-agx-devkit` |
-| Orin (need JP5) | JetPack 5 | `nix build .#flash-orin-agx-devkit-jp5` |
-| Xavier AGX/NX | JetPack 5 | `nix build .#flash-xavier-agx-devkit` |
-| Thor | JetPack 7 | `nix build .#flash-thor-agx-devkit` |
+| Your Device     | Recommended | Command                                 |
+| --------------- | ----------- | --------------------------------------- |
+| Orin AGX/NX/vim | JetPack 6   | `nix build .#flash-orin-agx-devkit`     |
+| Orin (need JP5) | JetPack 5   | `nix build .#flash-orin-agx-devkit-jp5` |
+| Xavier AGX/NX   | JetPack 5   | `nix build .#flash-xavier-agx-devkit`   |
+| Thor            | JetPack 7   | `nix build .#flash-thor-agx-devkit`     |
 
 The firmware version pre-installed on your device (like R35.4.1) doesn't matter—you're replacing it entirely.
 
@@ -1379,14 +1275,14 @@ The firmware version pre-installed on your device (like R35.4.1) doesn't matter�
 
 ## Glossary
 
-| Term | Meaning |
-|------|---------|
-| **L4T** | Linux for Tegra - NVIDIA's BSP (Board Support Package) |
-| **JetPack** | NVIDIA's SDK bundle (L4T + CUDA + cuDNN + TensorRT + ...) |
-| **SOM** | System-on-Module - the compute module (Orin, Xavier, etc.) |
-| **BSP** | Board Support Package - low-level software for hardware |
-| **OP-TEE** | Open Portable Trusted Execution Environment |
-| **DTB** | Device Tree Blob - hardware description for the kernel |
-| **UEFI** | Unified Extensible Firmware Interface - the bootloader |
-| **CBoot** | NVIDIA's older bootloader (replaced by UEFI in newer SOMs) |
-| **CDI** | Container Device Interface - for GPU container access |
+| Term        | Meaning                                                    |
+| ----------- | ---------------------------------------------------------- |
+| **L4T**     | Linux for Tegra - NVIDIA's BSP (Board Support Package)     |
+| **JetPack** | NVIDIA's SDK bundle (L4T + CUDA + cuDNN + TensorRT + ...)  |
+| **SOM**     | System-on-Module - the compute module (Orin, Xavier, etc.) |
+| **BSP**     | Board Support Package - low-level software for hardware    |
+| **OP-TEE**  | Open Portable Trusted Execution Environment                |
+| **DTB**     | Device Tree Blob - hardware description for the kernel     |
+| **UEFI**    | Unified Extensible Firmware Interface - the bootloader     |
+| **CBoot**   | NVIDIA's older bootloader (replaced by UEFI in newer SOMs) |
+| **CDI**     | Container Device Interface - for GPU container access      |
