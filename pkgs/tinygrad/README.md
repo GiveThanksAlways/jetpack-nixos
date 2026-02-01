@@ -212,7 +212,7 @@ DEBUG=2 CUDA=1 python your_script.py
 - [TinyGrad Documentation](https://docs.tinygrad.org/)
 - [TinyGrad GitHub](https://github.com/tinygrad/tinygrad)
 - [TinyGrad Discord](https://discord.gg/tinygrad)
-- [JetPack NixOS Documentation](../README.md)
+- [JetPack NixOS Documentation](../../README.md)
 - [NVIDIA Jetson Documentation](https://developer.nvidia.com/embedded/jetson-modules)
 
 ## License

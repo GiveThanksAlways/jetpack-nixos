@@ -45,6 +45,10 @@ python3Packages.buildPythonPackage rec {
   ];
 
   # TinyGrad has minimal core dependencies, extras are optional
+  # Note: We relax Python version requirement from 3.11+ to 3.10+ because:
+  # - TinyGrad's core functionality works with Python 3.10
+  # - Some NixOS configurations may still use Python 3.10
+  # - TinyGrad doesn't use Python 3.11-specific features in core code
   postPatch = ''
     substituteInPlace pyproject.toml \
       --replace 'requires-python = ">=3.11"' 'requires-python = ">=3.10"'
