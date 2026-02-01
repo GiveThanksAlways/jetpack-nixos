@@ -383,7 +383,7 @@ hardware.nvidia-jetpack = {
   
   som = lib.mkOption {
     type = lib.types.enum [
-      "orin-agx" "orin-agx-industrial" "orin-nx" "orin-nano"
+      "orin-agx" "orin-agx-industrial" "orin-nx" "orin-vim"
       "xavier-agx" "xavier-agx-industrial" "xavier-nx" "xavier-nx-emmc"
     ];
     description = "Jetson System-on-Module type";
@@ -621,7 +621,7 @@ sudo mount /dev/disk/by-label/ESP /mnt/boot
 sudo nixos-generate-config --root /mnt
 
 # 8. Edit configuration.nix
-sudo nano /mnt/etc/nixos/configuration.nix
+sudo vim /mnt/etc/nixos/configuration.nix
 ```
 
 Add this configuration (for Orin AGX with JetPack 6):
@@ -636,7 +636,7 @@ Add this configuration (for Orin AGX with JetPack 6):
   ];
 
   # Jetson configuration - CHANGE som IF NEEDED:
-  # Options: "orin-agx", "orin-nx", "orin-nano"
+  # Options: "orin-agx", "orin-nx", "orin-vim"
   hardware.nvidia-jetpack.enable = true;
   hardware.nvidia-jetpack.som = "orin-agx";
   hardware.nvidia-jetpack.carrierBoard = "devkit";
@@ -782,41 +782,147 @@ swapon /dev/disk/by-label/swap
 nixos-generate-config --root /mnt
 ```
 
-#### Step 6: Create Your Configuration
+#### Step 6: Edit Your Configuration
 
-You need two files for a flake-based setup. The files are available at:
-- `temp/nixos-config/flake.nix`
-- `temp/nixos-config/configuration.nix`
+`nixos-generate-config` already created these files:
+- `/mnt/etc/nixos/configuration.nix` - **Edit this** to add Jetson support
+- `/mnt/etc/nixos/hardware-configuration.nix` - Auto-generated, don't edit
 
-**Option A: Copy files via USB or network**
+You need to **add the jetpack-nixos lines** to the existing configuration.nix.
 
-If you have the jetpack-nixos repo accessible:
+---
+
+** TRADITIONAL (simpler, recommended for first install):**
+
 ```bash
-# From another machine, scp the files:
-scp temp/nixos-config/flake.nix nixos@<jetson-ip>:/tmp/
-scp temp/nixos-config/configuration.nix nixos@<jetson-ip>:/tmp/
-# Then on Jetson:
-cp /tmp/flake.nix /mnt/etc/nixos/
-cp /tmp/configuration.nix /mnt/etc/nixos/
+vim /mnt/etc/nixos/configuration.nix
 ```
 
-**Option B: Create files manually with vim**
+Add these lines to the `imports` section (after `./hardware-configuration.nix`):
+
+```nix
+  imports =
+    [ # Include the results of the hardware scan.
+      ./hardware-configuration.nix
+
+      # ADD THIS LINE for Jetson support:
+      (builtins.fetchTarball "https://github.com/anduril/jetpack-nixos/archive/master.tar.gz" + "/modules/default.nix")
+    ];
+```
+
+Then add these settings anywhere in the file (before the closing `}`):
+
+```nix
+  # =============================================================================
+  # JETSON HARDWARE CONFIGURATION (Required - from jetpack-nixos README)
+  # =============================================================================
+
+  hardware.nvidia-jetpack.enable = true;
+  hardware.nvidia-jetpack.som = "orin-agx";  # Jetson AGX Orin Developer Kit
+  hardware.nvidia-jetpack.carrierBoard = "devkit";
+
+  # Enable GPU support - needed even for CUDA and containers
+  hardware.graphics.enable = true;
+
+  # =============================================================================
+  # USER ACCOUNT (customize as needed)
+  # =============================================================================
+
+  users.users.spencer = {
+    isNormalUser = true;
+    extraGroups = [
+      "wheel"           # sudo access
+      "video"           # GPU access for graphics
+      "render"          # GPU access for CUDA compute
+      "networkmanager"  # Network configuration
+    ];
+    initialPassword = "changeme";  # CHANGE THIS AFTER FIRST LOGIN!
+  };
+
+  # Enable SSH for remote access
+  services.openssh.enable = true;
+
+  # Enable flakes (optional but recommended)
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+```
+
+Then install:
+```bash
+nixos-install
+```
+
+---
+
+**FLAKE-BASED (better version pinning):**
+
+First, edit the existing configuration.nix (do NOT add the fetchTarball import - flake handles it):
 
 ```bash
-# Edit/replace configuration.nix
 vim /mnt/etc/nixos/configuration.nix
+```
 
-# Create flake.nix
+Add the Jetson settings (same as above, but WITHOUT the fetchTarball import):
+
+```nix
+  # JETSON HARDWARE CONFIGURATION
+  hardware.nvidia-jetpack.enable = true;
+  hardware.nvidia-jetpack.som = "orin-agx";
+  hardware.nvidia-jetpack.carrierBoard = "devkit";
+  hardware.graphics.enable = true;
+
+  # USER ACCOUNT
+  users.users.spencer = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "video" "render" "networkmanager" ];
+    initialPassword = "changeme";
+  };
+
+  services.openssh.enable = true;
+  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+```
+
+Then create the flake.nix file:
+
+```bash
 vim /mnt/etc/nixos/flake.nix
 ```
 
-#### Step 7: Install NixOS
+Paste this content (or copy from `temp/flake.nix`):
 
+```nix
+{
+  description = "NixOS configuration for Jetson AGX Orin";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    jetpack-nixos.url = "github:anduril/jetpack-nixos/master";
+    jetpack-nixos.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, jetpack-nixos, ... }: {
+    nixosConfigurations.jetson = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        jetpack-nixos.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+Then install:
 ```bash
-# Install using the flake configuration
-# The #jetson refers to nixosConfigurations.jetson in flake.nix
 nixos-install --flake /mnt/etc/nixos#jetson
 ```
+
+---
+
+#### Step 7: Install NixOS
+
+The install command depends on which approach you chose above:
+- **Traditional:** `nixos-install`
+- **Flake:** `nixos-install --flake /mnt/etc/nixos#jetson`
 
 This will:
 1. Download and build all packages (takes 10-30+ minutes)
@@ -848,28 +954,27 @@ cat /proc/device-tree/model
 # Check GPU devices exist
 ls -la /dev/nvidia*
 
-# Future system updates:
+# Future system updates (depends on which approach you used):
+
+# Traditional approach:
+sudo nixos-rebuild switch
+
+# Flake approach:
 sudo nixos-rebuild switch --flake /etc/nixos#jetson
 
-# Update flake inputs (get latest jetpack-nixos, nixpkgs):
+# Update flake inputs (flake approach only):
 cd /etc/nixos
 sudo nix flake update
 sudo nixos-rebuild switch --flake .#jetson
 ```
 
-### Alternative: Non-Flake Installation
+### Migrating from Traditional to Flakes
 
-If you prefer not to use flakes, replace step 6 with:
+If you started with the Traditional approach and want to switch to Flakes later:
 
-```bash
-nano /mnt/etc/nixos/configuration.nix
-```
-
-And use the configuration from `temp/nixos-config-traditional/configuration.nix`, then:
-
-```bash
-nixos-install  # No --flake flag
-```
+1. Create `/etc/nixos/flake.nix` (copy from `temp/flake.nix`)
+2. Edit `/etc/nixos/configuration.nix` and **comment out** the fetchTarball import
+3. Run: `sudo nixos-rebuild switch --flake /etc/nixos#jetson`
 
 ### Note on Determinate Nix
 
@@ -1196,7 +1301,7 @@ Examples:
 |------|-----|---------|---------|
 | `orin-agx-devkit` | Orin AGX | Developer Kit | 6 (default) |
 | `orin-agx-devkit-jp5` | Orin AGX | Developer Kit | 5 |
-| `orin-nano-super-devkit` | Orin Nano (Super) | Developer Kit | 6 |
+| `orin-vim-super-devkit` | Orin vim (Super) | Developer Kit | 6 |
 | `xavier-nx-devkit` | Xavier NX | Developer Kit | 5 |
 
 ### Key Flake Outputs
@@ -1234,7 +1339,7 @@ nix build github:anduril/jetpack-nixos#flash-orin-agx-devkit
 
 | Your Device | Recommended | Command |
 |-------------|-------------|---------|
-| Orin AGX/NX/Nano | JetPack 6 | `nix build .#flash-orin-agx-devkit` |
+| Orin AGX/NX/vim | JetPack 6 | `nix build .#flash-orin-agx-devkit` |
 | Orin (need JP5) | JetPack 5 | `nix build .#flash-orin-agx-devkit-jp5` |
 | Xavier AGX/NX | JetPack 5 | `nix build .#flash-xavier-agx-devkit` |
 | Thor | JetPack 7 | `nix build .#flash-thor-agx-devkit` |
