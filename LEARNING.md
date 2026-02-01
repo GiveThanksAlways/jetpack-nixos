@@ -549,9 +549,405 @@ sudo eject $DEV_USB
 # - just plug into any USB port. I did the bottom one next to the ethernet port
 
 # 9. Install NixOS to internal storage
-# Follow the NixOS installation guide (partitioning, configuration, etc.)
-# See README.md "Installing NixOS" section for jetpack-specific config 
+# See below for detailed installation steps
 ```
+
+### Installing NixOS to eMMC (No SSD)
+
+The Jetson eMMC contains firmware partitions that **must not be destroyed**:
+```
+mmcblk0p1  (57.8G)  = UDA (User Data Area) - SAFE to use for NixOS
+mmcblk0p2-p15       = Firmware partitions - DO NOT TOUCH!
+mmcblk0boot0/boot1  = Boot partitions - DO NOT TOUCH!
+```
+
+**What happens if you mess up?**
+- If you only format `mmcblk0p1`: You can always reinstall, device is fine
+- If you destroy the partition table (`parted mklabel gpt`): You need to re-flash firmware from host PC
+- The UEFI firmware lives in flash memory, not filesystem - device is NOT bricked, just needs re-flash
+
+**Recovery path:** Put device in recovery mode → re-run flash script from host PC → device is restored
+
+#### Step-by-Step eMMC Installation
+
+```bash
+# 1. First, check current partition layout
+lsblk
+sudo fdisk -l /dev/mmcblk0
+
+# 2. Check if there's an existing ESP (EFI System Partition)
+sudo blkid | grep -i fat
+
+# 3. The UDA partition (mmcblk0p1) needs to be split into:
+#    - ESP (512MB, FAT32) for bootloader
+#    - Root (remainder, ext4) for NixOS
+#
+# We'll delete p1 and create two new partitions in its place.
+# This is SAFE because we're only touching the UDA area.
+
+# WARNING: Double-check partition numbers! p1 should be ~57.8GB
+
+# 4. Use fdisk to repartition (safer than parted for this)
+sudo fdisk /dev/mmcblk0
+
+# In fdisk, type these commands:
+#   p          (print current partitions - verify p1 is the 57.8G one!)
+#   d          (delete partition)
+#   1          (partition 1 - the UDA)
+#   n          (new partition)
+#   1          (partition number 1)
+#   <enter>    (default first sector - fdisk picks the right one)
+#   +512M      (512MB for ESP)
+#   t          (change type)
+#   1          (partition 1)
+#   1          (EFI System type)
+#   n          (new partition)
+#   <enter>    (default partition number, likely 16 or uses free space)
+#   <enter>    (default first sector)
+#   <enter>    (default last sector - use remaining space)
+#   p          (print to verify - should see new ESP + large partition)
+#   w          (write changes - POINT OF NO RETURN for partition table)
+
+# 5. Format the new partitions
+sudo mkfs.fat -F 32 -n ESP /dev/mmcblk0p1
+sudo mkfs.ext4 -L nixos /dev/mmcblk0p16  # Or whatever the new root partition number is
+
+# 6. Mount filesystems
+sudo mount /dev/disk/by-label/nixos /mnt
+sudo mkdir -p /mnt/boot
+sudo mount /dev/disk/by-label/ESP /mnt/boot
+
+# 7. Generate hardware configuration
+sudo nixos-generate-config --root /mnt
+
+# 8. Edit configuration.nix
+sudo nano /mnt/etc/nixos/configuration.nix
+```
+
+Add this configuration (for Orin AGX with JetPack 6):
+
+```nix
+{ config, lib, pkgs, ... }:
+
+{
+  imports = [
+    ./hardware-configuration.nix
+    (builtins.fetchTarball "https://github.com/anduril/jetpack-nixos/archive/master.tar.gz" + "/modules/default.nix")
+  ];
+
+  # Jetson configuration - CHANGE som IF NEEDED:
+  # Options: "orin-agx", "orin-nx", "orin-nano"
+  hardware.nvidia-jetpack.enable = true;
+  hardware.nvidia-jetpack.som = "orin-agx";
+  hardware.nvidia-jetpack.carrierBoard = "devkit";
+
+  # GPU support (required for CUDA and containers too)
+  hardware.graphics.enable = true;
+
+  # Bootloader
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+
+  # Networking
+  networking.hostName = "jetson";
+  networking.networkmanager.enable = true;
+
+  # User account - CHANGE THIS!
+  users.users.spencer = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "video" "networkmanager" ];
+    initialPassword = "changeme";  # Change after first login!
+  };
+
+  # Enable SSH for remote access
+  services.openssh.enable = true;
+
+  # Allow unfree packages (required for NVIDIA)
+  nixpkgs.config.allowUnfree = true;
+
+  system.stateVersion = "25.11";
+}
+```
+
+```bash
+# 9. Install NixOS
+sudo nixos-install
+
+# 10. Set root password when prompted
+
+# 11. Reboot (remove USB when it powers off)
+sudo reboot
+```
+
+### Installing NixOS to NVMe SSD (Recommended)
+
+If you have an NVMe SSD, installation is simpler because you can partition freely:
+
+```bash
+# 1. Identify the NVMe drive
+lsblk
+# Should show /dev/nvme0n1
+# Also shows /dev/mmcblk0 (eMMC with firmware) and /dev/sda (USB installer)
+
+# 2. Partition the NVMe (this is SAFE - won't affect eMMC firmware)
+sudo parted /dev/nvme0n1 -- mklabel gpt
+sudo parted /dev/nvme0n1 -- mkpart ESP fat32 1MB 512MB
+sudo parted /dev/nvme0n1 -- set 1 esp on
+sudo parted /dev/nvme0n1 -- mkpart primary 512MB 100%
+
+# 3. Format
+sudo mkfs.fat -F 32 -n ESP /dev/nvme0n1p1
+sudo mkfs.ext4 -L nixos /dev/nvme0n1p2
+
+# 4. Mount
+sudo mount /dev/disk/by-label/nixos /mnt
+sudo mkdir -p /mnt/boot
+sudo mount /dev/disk/by-label/ESP /mnt/boot
+
+# 5. Generate hardware configuration
+sudo nixos-generate-config --root /mnt
+
+# 6. Create flake-based configuration structure
+sudo mkdir -p /mnt/etc/nixos
+```
+
+#### Create flake.nix
+
+```bash
+sudo nano /mnt/etc/nixos/flake.nix
+```
+
+Paste this content:
+
+```nix
+{
+  description = "Jetson Orin AGX NixOS Configuration";
+
+  inputs = {
+    # Using nixos-unstable for latest packages
+    # Can pin to nixos-25.05 for stability
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    
+    # Jetpack NixOS for Jetson support
+    jetpack-nixos.url = "github:anduril/jetpack-nixos/master";
+    jetpack-nixos.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, jetpack-nixos, ... }@inputs: {
+    nixosConfigurations.jetson = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      specialArgs = { inherit inputs; };
+      modules = [
+        jetpack-nixos.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+#### Create configuration.nix
+
+```bash
+sudo nano /mnt/etc/nixos/configuration.nix
+```
+
+Paste this content:
+
+```nix
+{ config, lib, pkgs, inputs, ... }:
+
+{
+  imports = [
+    ./hardware-configuration.nix
+  ];
+
+  # ==========================================================================
+  # JETSON HARDWARE CONFIGURATION
+  # ==========================================================================
+  
+  hardware.nvidia-jetpack = {
+    enable = true;
+    som = "orin-agx";           # Options: "orin-agx", "orin-nx", "orin-nano"
+    carrierBoard = "devkit";
+    # modesetting.enable = true;  # Enable for Wayland support
+  };
+
+  # GPU support - required even for CUDA and containers
+  hardware.graphics.enable = true;
+
+  # ==========================================================================
+  # BOOTLOADER
+  # ==========================================================================
+  
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+  
+  # Use the Jetson-specific kernel (set by jetpack module, but explicit here)
+  # boot.kernelPackages = pkgs.nvidia-jetpack.kernelPackages;
+
+  # ==========================================================================
+  # NETWORKING
+  # ==========================================================================
+  
+  networking.hostName = "jetson";
+  networking.networkmanager.enable = true;
+  
+  # Firewall - allow SSH, can add more ports later
+  networking.firewall = {
+    enable = true;
+    allowedTCPPorts = [ 22 ];
+  };
+
+  # ==========================================================================
+  # USER CONFIGURATION
+  # ==========================================================================
+  
+  users.users.spencer = {
+    isNormalUser = true;
+    description = "Spencer";
+    extraGroups = [ 
+      "wheel"           # sudo access
+      "video"           # GPU/display access
+      "networkmanager"  # Network management
+      "docker"          # Docker (if enabled)
+    ];
+    initialPassword = "changeme";  # CHANGE THIS after first login!
+    openssh.authorizedKeys.keys = [
+      # Add your SSH public key here for passwordless login:
+      # "ssh-ed25519 AAAAC3Nza... your-key-comment"
+    ];
+  };
+
+  # ==========================================================================
+  # SERVICES
+  # ==========================================================================
+  
+  # SSH - essential for headless operation
+  services.openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "no";
+      PasswordAuthentication = true;  # Set to false after adding SSH keys
+    };
+  };
+
+  # ==========================================================================
+  # PACKAGES
+  # ==========================================================================
+  
+  # Allow unfree packages (required for NVIDIA)
+  nixpkgs.config.allowUnfree = true;
+
+  # System packages
+  environment.systemPackages = with pkgs; [
+    # Essential tools
+    vim
+    git
+    wget
+    curl
+    htop
+    tmux
+    
+    # Networking
+    iproute2
+    ethtool
+    
+    # Hardware info
+    pciutils
+    usbutils
+    lshw
+  ];
+
+  # ==========================================================================
+  # NIX SETTINGS
+  # ==========================================================================
+  
+  nix = {
+    settings = {
+      experimental-features = [ "nix-command" "flakes" ];
+      auto-optimise-store = true;
+      trusted-users = [ "root" "@wheel" ];
+    };
+    
+    # Garbage collection
+    gc = {
+      automatic = true;
+      dates = "weekly";
+      options = "--delete-older-than 30d";
+    };
+  };
+
+  # ==========================================================================
+  # SYSTEM
+  # ==========================================================================
+  
+  # Timezone - change to your location
+  time.timeZone = "America/Los_Angeles";
+
+  # Locale
+  i18n.defaultLocale = "en_US.UTF-8";
+
+  # This value determines the NixOS release from which the default
+  # settings for stateful data, like file locations and database versions
+  # on your system were taken. It's perfectly fine and recommended to leave
+  # this value at the release version of the first install of this system.
+  system.stateVersion = "25.11";
+}
+```
+
+#### Install NixOS
+
+```bash
+# 7. Install NixOS (this will take a while - downloads packages)
+sudo nixos-install --flake /mnt/etc/nixos#jetson
+
+# 8. Set root password when prompted
+
+# 9. Reboot (remove USB after power off)
+sudo reboot
+```
+
+#### Post-Installation
+
+After rebooting, your Jetson should boot from the SSD into NixOS!
+
+```bash
+# Login as your user (spencer / changeme)
+
+# Change your password immediately!
+passwd
+
+# Verify Jetson hardware is working
+cat /proc/device-tree/model
+# Should show: NVIDIA Jetson AGX Orin Developer Kit
+
+# Check GPU is accessible
+ls /dev/nvidia*
+
+# Check CUDA (if needed)
+# nvidia-smi equivalent for Jetson:
+cat /sys/class/tegra-gpe/device/load
+
+# Future updates - from your dev machine or on device:
+sudo nixos-rebuild switch --flake /etc/nixos#jetson
+```
+
+### Note on Determinate Nix
+
+Determinate Nix (from Determinate Systems) provides a better out-of-box experience
+for the `nix` CLI on non-NixOS systems. On NixOS itself, you already have nix
+installed, but you can still benefit from their installer if you ever need to
+set up nix on other machines (like your dev machine).
+
+Key differences:
+- Determinate installer: `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh`
+- Enables flakes by default
+- Better uninstall support
+- Same nix underneath
+
+For NixOS, we configure flakes in `nix.settings.experimental-features` (already done above).
+
 
 ### Flashing from WSL2 (Windows)
 
