@@ -35,3 +35,4 @@ models/
 # Generated images
 *.png
 !vendor/tinygrad/examples/*.png
+tinygrad-repo.tar.gz
