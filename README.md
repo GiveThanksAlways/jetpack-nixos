@@ -329,3 +329,66 @@ final: _: { inherit (final.nvidia-jetpack) cudaPackages; }
 
 Much of this is inspired by the great work done by [OpenEmbedded for Tegra](https://github.com/OE4T).
 We also use the cleaned-up vendor kernel from OE4T.
+
+## Camera and AI Vision Support
+
+### IMX219 Camera Module (e.g., Waveshare Binocular Camera)
+
+This repository includes support for IMX219 camera sensors commonly used in stereo vision applications:
+
+```nix
+{
+  hardware.nvidia-jetpack = {
+    enable = true;
+    som = "orin-agx";
+    carrierBoard = "devkit";
+    
+    # Enable IMX219 camera support
+    cameras.imx219 = {
+      enable = true;
+      enableStereo = true;  # For dual camera setups
+      enableCalibrationTools = true;
+    };
+  };
+}
+```
+
+### Example Configuration
+
+A comprehensive example configuration for computer vision and AI/ML workloads is available in `examples/orin-agx-camera-ai.nix`. This configuration includes:
+
+- Waveshare Binocular Camera Module (Dual IMX219) support
+- ESP32-CAM network camera support
+- Computer vision libraries (OpenCV with CUDA)
+- Machine learning tools
+- Stereo 3D vision processing
+- GStreamer for video processing
+
+To use the example:
+
+```nix
+{
+  imports = [
+    ./examples/orin-agx-camera-ai.nix
+  ];
+  
+  users.users.youruser = {
+    extraGroups = [ "video" "i2c" ];
+  };
+}
+```
+
+See `examples/CAMERA-AI-SETUP.md` for detailed setup instructions and usage examples.
+
+### Testing Cameras
+
+A camera testing script is provided in `examples/test-cameras.sh`:
+
+```bash
+# Run the camera test script
+./examples/test-cameras.sh
+
+# Or test manually with GStreamer
+gst-launch-1.0 nvarguscamerasrc sensor-id=0 ! nvoverlaysink
+```
+
