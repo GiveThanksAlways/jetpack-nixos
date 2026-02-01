@@ -681,272 +681,210 @@ sudo reboot
 
 ### Installing NixOS to NVMe SSD (Recommended)
 
-If you have an NVMe SSD, installation is simpler because you can partition freely:
+This follows the official [NixOS Installation Manual](https://nixos.org/manual/nixos/stable/#sec-installation-manual).
+
+#### Prerequisites
+
+You should be booted into the NixOS installer from the USB drive. You'll see a login prompt
+and be auto-logged in as `nixos`. The `nixos` user has an empty password, so you can use `sudo`
+without entering a password.
 
 ```bash
-# 1. Identify the NVMe drive
+# Become root for the installation
+sudo -i
+
+# Verify networking is working (needed to download packages)
+ip a
+ping -c 3 google.com
+
+# If no network, configure via NetworkManager:
+nmtui
+
+# Optional: Set a larger font if text is too small
+setfont ter-v32n
+
+# Optional: Enable SSH for remote installation
+# Set a password first:
+passwd nixos
+# Then connect from another machine: ssh nixos@<jetson-ip>
+```
+
+#### Step 1: Identify the NVMe Drive
+
+```bash
 lsblk
-# Should show /dev/nvme0n1
-# Also shows /dev/mmcblk0 (eMMC with firmware) and /dev/sda (USB installer)
-
-# 2. Partition the NVMe (this is SAFE - won't affect eMMC firmware)
-sudo parted /dev/nvme0n1 -- mklabel gpt
-sudo parted /dev/nvme0n1 -- mkpart ESP fat32 1MB 512MB
-sudo parted /dev/nvme0n1 -- set 1 esp on
-sudo parted /dev/nvme0n1 -- mkpart primary 512MB 100%
-
-# 3. Format
-sudo mkfs.fat -F 32 -n ESP /dev/nvme0n1p1
-sudo mkfs.ext4 -L nixos /dev/nvme0n1p2
-
-# 4. Mount
-sudo mount /dev/disk/by-label/nixos /mnt
-sudo mkdir -p /mnt/boot
-sudo mount /dev/disk/by-label/ESP /mnt/boot
-
-# 5. Generate hardware configuration
-sudo nixos-generate-config --root /mnt
-
-# 6. Create flake-based configuration structure
-sudo mkdir -p /mnt/etc/nixos
 ```
 
-#### Create flake.nix
+You should see:
+- `/dev/nvme0n1` - The NVMe SSD (install target)
+- `/dev/mmcblk0` - eMMC with firmware partitions
+- `/dev/sda` - USB installer drive
+
+#### Step 2: Partition the NVMe (UEFI GPT)
 
 ```bash
-sudo nano /mnt/etc/nixos/flake.nix
+# Create GPT partition table
+parted /dev/nvme0n1 -- mklabel gpt
+
+# Create boot partition (ESP) - 512MB at start
+parted /dev/nvme0n1 -- mkpart ESP fat32 1MB 512MB
+parted /dev/nvme0n1 -- set 1 esp on
+
+# Create root partition - rest of disk (minus 8GB for swap)
+parted /dev/nvme0n1 -- mkpart root ext4 512MB -8GB
+
+# Create swap partition - last 8GB
+parted /dev/nvme0n1 -- mkpart swap linux-swap -8GB 100%
 ```
 
-Paste this content:
-
-```nix
-{
-  description = "Jetson Orin AGX NixOS Configuration";
-
-  inputs = {
-    # Using nixos-unstable for latest packages
-    # Can pin to nixos-25.05 for stability
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    
-    # Jetpack NixOS for Jetson support
-    jetpack-nixos.url = "github:anduril/jetpack-nixos/master";
-    jetpack-nixos.inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  outputs = { self, nixpkgs, jetpack-nixos, ... }@inputs: {
-    nixosConfigurations.jetson = nixpkgs.lib.nixosSystem {
-      system = "aarch64-linux";
-      specialArgs = { inherit inputs; };
-      modules = [
-        jetpack-nixos.nixosModules.default
-        ./configuration.nix
-      ];
-    };
-  };
-}
-```
-
-#### Create configuration.nix
+#### Step 3: Format the Partitions
 
 ```bash
-sudo nano /mnt/etc/nixos/configuration.nix
+# Format boot partition (ESP) as FAT32
+mkfs.fat -F 32 -n boot /dev/nvme0n1p1
+
+# Format root partition as ext4
+mkfs.ext4 -L nixos /dev/nvme0n1p2
+
+# Format swap partition
+mkswap -L swap /dev/nvme0n1p3
+
+# Verify partition layout
+parted /dev/nvme0n1 -- print
+# Expected output:
+
+# Number  Start   End     Size    File system  Name  Flags
+#  1      1049kB  512MB   511MB   fat32        ESP   boot, esp
+#  2      512MB   Xgb     Xgb     ext4         root
+#  3      Xgb     Xgb     8GB     linux-swap   swap
 ```
 
-Paste this content:
-
-```nix
-{ config, lib, pkgs, inputs, ... }:
-
-{
-  imports = [
-    ./hardware-configuration.nix
-  ];
-
-  # ==========================================================================
-  # JETSON HARDWARE CONFIGURATION
-  # ==========================================================================
-  
-  hardware.nvidia-jetpack = {
-    enable = true;
-    som = "orin-agx";           # Options: "orin-agx", "orin-nx", "orin-nano"
-    carrierBoard = "devkit";
-    # modesetting.enable = true;  # Enable for Wayland support
-  };
-
-  # GPU support - required even for CUDA and containers
-  hardware.graphics.enable = true;
-
-  # ==========================================================================
-  # BOOTLOADER
-  # ==========================================================================
-  
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-  
-  # Use the Jetson-specific kernel (set by jetpack module, but explicit here)
-  # boot.kernelPackages = pkgs.nvidia-jetpack.kernelPackages;
-
-  # ==========================================================================
-  # NETWORKING
-  # ==========================================================================
-  
-  networking.hostName = "jetson";
-  networking.networkmanager.enable = true;
-  
-  # Firewall - allow SSH, can add more ports later
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [ 22 ];
-  };
-
-  # ==========================================================================
-  # USER CONFIGURATION
-  # ==========================================================================
-  
-  users.users.spencer = {
-    isNormalUser = true;
-    description = "Spencer";
-    extraGroups = [ 
-      "wheel"           # sudo access
-      "video"           # GPU/display access
-      "networkmanager"  # Network management
-      "docker"          # Docker (if enabled)
-    ];
-    initialPassword = "changeme";  # CHANGE THIS after first login!
-    openssh.authorizedKeys.keys = [
-      # Add your SSH public key here for passwordless login:
-      # "ssh-ed25519 AAAAC3Nza... your-key-comment"
-    ];
-  };
-
-  # ==========================================================================
-  # SERVICES
-  # ==========================================================================
-  
-  # SSH - essential for headless operation
-  services.openssh = {
-    enable = true;
-    settings = {
-      PermitRootLogin = "no";
-      PasswordAuthentication = true;  # Set to false after adding SSH keys
-    };
-  };
-
-  # ==========================================================================
-  # PACKAGES
-  # ==========================================================================
-  
-  # Allow unfree packages (required for NVIDIA)
-  nixpkgs.config.allowUnfree = true;
-
-  # System packages
-  environment.systemPackages = with pkgs; [
-    # Essential tools
-    vim
-    git
-    wget
-    curl
-    htop
-    tmux
-    
-    # Networking
-    iproute2
-    ethtool
-    
-    # Hardware info
-    pciutils
-    usbutils
-    lshw
-  ];
-
-  # ==========================================================================
-  # NIX SETTINGS
-  # ==========================================================================
-  
-  nix = {
-    settings = {
-      experimental-features = [ "nix-command" "flakes" ];
-      auto-optimise-store = true;
-      trusted-users = [ "root" "@wheel" ];
-    };
-    
-    # Garbage collection
-    gc = {
-      automatic = true;
-      dates = "weekly";
-      options = "--delete-older-than 30d";
-    };
-  };
-
-  # ==========================================================================
-  # SYSTEM
-  # ==========================================================================
-  
-  # Timezone - change to your location
-  time.timeZone = "America/Los_Angeles";
-
-  # Locale
-  i18n.defaultLocale = "en_US.UTF-8";
-
-  # This value determines the NixOS release from which the default
-  # settings for stateful data, like file locations and database versions
-  # on your system were taken. It's perfectly fine and recommended to leave
-  # this value at the release version of the first install of this system.
-  system.stateVersion = "25.11";
-}
-```
-
-#### Install NixOS
+#### Step 4: Mount the File Systems
 
 ```bash
-# 7. Install NixOS (this will take a while - downloads packages)
-sudo nixos-install --flake /mnt/etc/nixos#jetson
+# Mount root partition
+mount /dev/disk/by-label/nixos /mnt
 
-# 8. Set root password when prompted
+# Create and mount boot directory
+mkdir -p /mnt/boot
+mount -o umask=077 /dev/disk/by-label/boot /mnt/boot
 
-# 9. Reboot (remove USB after power off)
-sudo reboot
+# Enable swap (helps if low on RAM during install)
+swapon /dev/disk/by-label/swap
 ```
 
-#### Post-Installation
-
-After rebooting, your Jetson should boot from the SSD into NixOS!
+#### Step 5: Generate Hardware Configuration
 
 ```bash
-# Login as your user (spencer / changeme)
+# This auto-detects your hardware and creates:
+#   /mnt/etc/nixos/configuration.nix (template)
+#   /mnt/etc/nixos/hardware-configuration.nix (auto-generated, don't edit)
+nixos-generate-config --root /mnt
+```
 
-# Change your password immediately!
+#### Step 6: Create Your Configuration
+
+You need two files for a flake-based setup. The files are available at:
+- `temp/nixos-config/flake.nix`
+- `temp/nixos-config/configuration.nix`
+
+**Option A: Copy files via USB or network**
+
+If you have the jetpack-nixos repo accessible:
+```bash
+# From another machine, scp the files:
+scp temp/nixos-config/flake.nix nixos@<jetson-ip>:/tmp/
+scp temp/nixos-config/configuration.nix nixos@<jetson-ip>:/tmp/
+# Then on Jetson:
+cp /tmp/flake.nix /mnt/etc/nixos/
+cp /tmp/configuration.nix /mnt/etc/nixos/
+```
+
+**Option B: Create files manually with vim**
+
+```bash
+# Edit/replace configuration.nix
+vim /mnt/etc/nixos/configuration.nix
+
+# Create flake.nix
+vim /mnt/etc/nixos/flake.nix
+```
+
+#### Step 7: Install NixOS
+
+```bash
+# Install using the flake configuration
+# The #jetson refers to nixosConfigurations.jetson in flake.nix
+nixos-install --flake /mnt/etc/nixos#jetson
+```
+
+This will:
+1. Download and build all packages (takes 10-30+ minutes)
+2. Install the system to /mnt
+3. Ask you to set the root password at the end
+
+If it fails, fix the configuration and re-run `nixos-install`.
+
+#### Step 8: Reboot
+
+```bash
+reboot
+```
+
+Remove the USB drive when the system powers off. The Jetson should boot from the NVMe SSD.
+
+#### Step 9: Post-Installation
+
+```bash
+# Login as spencer (password: changeme)
+
+# IMMEDIATELY change your password!
 passwd
 
-# Verify Jetson hardware is working
+# Verify Jetson hardware
 cat /proc/device-tree/model
 # Should show: NVIDIA Jetson AGX Orin Developer Kit
 
-# Check GPU is accessible
-ls /dev/nvidia*
+# Check GPU devices exist
+ls -la /dev/nvidia*
 
-# Check CUDA (if needed)
-# nvidia-smi equivalent for Jetson:
-cat /sys/class/tegra-gpe/device/load
-
-# Future updates - from your dev machine or on device:
+# Future system updates:
 sudo nixos-rebuild switch --flake /etc/nixos#jetson
+
+# Update flake inputs (get latest jetpack-nixos, nixpkgs):
+cd /etc/nixos
+sudo nix flake update
+sudo nixos-rebuild switch --flake .#jetson
+```
+
+### Alternative: Non-Flake Installation
+
+If you prefer not to use flakes, replace step 6 with:
+
+```bash
+nano /mnt/etc/nixos/configuration.nix
+```
+
+And use the configuration from `temp/nixos-config-traditional/configuration.nix`, then:
+
+```bash
+nixos-install  # No --flake flag
 ```
 
 ### Note on Determinate Nix
 
-Determinate Nix (from Determinate Systems) provides a better out-of-box experience
-for the `nix` CLI on non-NixOS systems. On NixOS itself, you already have nix
-installed, but you can still benefit from their installer if you ever need to
-set up nix on other machines (like your dev machine).
+**On NixOS:** You don't need the Determinate Nix installer - NixOS has nix built-in.
+The configuration above already enables the same features Determinate enables:
+- `nix-command` - new unified CLI
+- `flakes` - flake support
+- Auto store optimization
+- Garbage collection
 
-Key differences:
-- Determinate installer: `curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh`
-- Enables flakes by default
-- Better uninstall support
-- Same nix underneath
-
-For NixOS, we configure flakes in `nix.settings.experimental-features` (already done above).
+**On non-NixOS systems** (like your dev machine, macOS, Ubuntu):
+Use the Determinate installer for a better experience:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh
+```
 
 
 ### Flashing from WSL2 (Windows)

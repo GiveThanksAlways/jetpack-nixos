@@ -1,10 +1,16 @@
 # Jetson Orin AGX NixOS Configuration (Traditional - No Flake)
 #
-# This is the standalone configuration.nix that fetches jetpack-nixos directly.
-# Use this if you prefer NOT to use flakes.
+# RECOMMENDED FOR FIRST INSTALL - simpler, no flake.nix needed.
+# This standalone configuration.nix fetches jetpack-nixos directly.
+# You can migrate to flakes later if desired.
 #
-# Usage:
-#   sudo nixos-install
+# Installation:
+#   1. Copy this file to /mnt/etc/nixos/configuration.nix
+#   2. Run: nixos-install
+#   3. Reboot and login as spencer (password: changeme)
+#   4. Run: passwd  (to change your password)
+#
+# Future updates:
 #   sudo nixos-rebuild switch
 #
 { config, lib, pkgs, ... }:
@@ -63,8 +69,8 @@
   users.users.spencer = {
     isNormalUser = true;
     description = "Spencer";
-    extraGroups = [ "wheel" "video" "networkmanager" "docker" ];
-    initialPassword = "changeme";
+    extraGroups = [ "wheel" "video" "render" "networkmanager" "docker" ];
+    initialPassword = "changeme";  # CHANGE after first login: passwd
     openssh.authorizedKeys.keys = [
       # "ssh-ed25519 AAAAC3Nza... your-key-comment"
     ];

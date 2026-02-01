@@ -1,12 +1,3 @@
-# Jetson Orin AGX NixOS Configuration (Flake-based)
-#
-# This flake defines YOUR NixOS system configuration.
-# It imports jetpack-nixos as a dependency to get Jetson hardware support.
-#
-# Usage:
-#   sudo nixos-install --flake /mnt/etc/nixos#jetson
-#   sudo nixos-rebuild switch --flake /etc/nixos#jetson
-#
 {
   description = "Jetson Orin AGX NixOS Configuration";
 

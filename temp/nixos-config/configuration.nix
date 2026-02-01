@@ -1,8 +1,4 @@
 # Jetson Orin AGX NixOS Configuration
-#
-# This file defines your NixOS system.
-# Works with both flake-based and traditional (non-flake) setups.
-#
 { config, lib, pkgs, inputs ? null, ... }:
 
 {
@@ -55,6 +51,7 @@
     extraGroups = [
       "wheel"           # sudo access
       "video"           # GPU/display access (important for Jetson!)
+      "render"          # GPU compute access (for CUDA)
       "networkmanager"  # Network management
       "docker"          # Docker access (if enabled)
     ];
