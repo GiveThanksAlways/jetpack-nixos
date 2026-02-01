@@ -222,33 +222,35 @@ cv2.destroyAllWindows()
 
 ### Using Tinygrad for ML
 
-Tinygrad is a lightweight machine learning framework. Install and use it:
+Tinygrad is a lightweight machine learning framework. Install it in a virtual environment:
 
 ```bash
 # Create a Python virtual environment
 python -m venv ~/ml-env
 source ~/ml-env/bin/activate
 
-# Install tinygrad (with CUDA support)
+# Install tinygrad with CUDA support
 pip install tinygrad
 
-# Test tinygrad
+# Verify installation
 python3 << 'PYTHON'
 from tinygrad.tensor import Tensor
-from tinygrad.nn import Conv2d
 import numpy as np
 
 # Create a simple test tensor
 x = Tensor.randn(1, 3, 224, 224)
 print(f"Created tensor with shape: {x.shape}")
 
-# Simple convolution
-conv = Conv2d(3, 64, kernel_size=3)
-y = conv(x)
-print(f"Output shape: {y.shape}")
-
 print("Tinygrad is working!")
 PYTHON
+
+# Deactivate when done
+deactivate
+```
+
+**Note:** Tinygrad is rapidly evolving. For the latest features and CUDA optimization, install from git:
+```bash
+pip install git+https://github.com/tinygrad/tinygrad.git
 ```
 
 ### TensorRT for Inference
