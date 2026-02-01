@@ -20,6 +20,7 @@ Usage:
   FASHION=1 CUDA=1 python jetson_mnist.py
 """
 
+import math
 import os
 from typing import Callable
 
@@ -105,7 +106,7 @@ def main():
 
     # Training loop
     print("Starting training...")
-    test_acc = float('nan')
+    test_acc = math.nan
     for i in (t := trange(steps)):
         GlobalCounters.reset()
         loss = train_step()

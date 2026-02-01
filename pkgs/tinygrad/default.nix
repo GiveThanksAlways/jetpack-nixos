@@ -1,10 +1,17 @@
 # TinyGrad package for Jetpack NixOS
 # Provides TinyGrad with CUDA support for NVIDIA Jetson devices
+#
+# Usage with local submodule source (recommended for development):
+#   tinygrad.override { src = ./vendor/tinygrad; }
+#
+# Usage with fetched source (for reproducible builds):
+#   Uses fetchFromGitHub with pinned commit
 { lib
 , python3Packages
 , fetchFromGitHub
 , cudaPackages ? null
 , enableCuda ? true
+, src ? null  # Allow overriding source for local development
 }:
 
 python3Packages.buildPythonPackage rec {
@@ -12,11 +19,18 @@ python3Packages.buildPythonPackage rec {
   version = "0.12.0";
   format = "pyproject";
 
-  src = fetchFromGitHub {
+  # Use provided src or fetch from GitHub
+  # The submodule at vendor/tinygrad can be passed as src for local development
+  src = if src != null then src else fetchFromGitHub {
     owner = "GiveThanksAlways";
     repo = "tinygrad";
-    rev = "master";
-    hash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; # Will need to be updated
+    # Pin to specific commit for reproducibility
+    # Update this when updating the vendor/tinygrad submodule
+    rev = "ced886f26cbcc1a79e10fa6af2d9b30b590cf030";
+    # To update this hash after changing rev:
+    # nix-prefetch-github GiveThanksAlways tinygrad --rev <commit>
+    # Or use: nix build .#tinygrad 2>&1 | grep "got:" to see actual hash
+    hash = "sha256-0000000000000000000000000000000000000000000=";
   };
 
   nativeBuildInputs = with python3Packages; [
@@ -40,6 +54,11 @@ python3Packages.buildPythonPackage rec {
   doCheck = false;
 
   pythonImportsCheck = [ "tinygrad" ];
+
+  passthru = {
+    # Provide path to examples for easy reference
+    examplesPath = "${src}/examples";
+  };
 
   meta = with lib; {
     description = "A simple, hackable deep learning framework - perfect for Jetson development";
