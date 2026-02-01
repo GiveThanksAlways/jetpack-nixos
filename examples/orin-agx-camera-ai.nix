@@ -59,6 +59,8 @@
     python3Packages.scipy            # Scientific computing
     python3Packages.matplotlib       # Plotting
     python3Packages.pillow           # Image processing
+    python3Packages.flask            # Web server for camera streaming
+    python3Packages.requests         # HTTP library for ESP32-CAM
     
     # Network tools for ESP32-CAM
     curl                             # Transfer data from/to servers
