@@ -136,6 +136,25 @@
       }
       // supportedNixOSConfigurations;
 
+      # Example configurations
+      examples = {
+        orin-agx-camera-ai = nixpkgs.lib.nixosSystem {
+          modules = [
+            aarch64_config
+            self.nixosModules.default
+            ./examples/orin-agx-camera-ai.nix
+            {
+              hardware.nvidia-jetpack.enable = true;
+              networking.hostName = "orin-agx-camera-ai";
+              # Minimal config to make it evaluate
+              fileSystems."/".fsType = "tmpfs";
+              boot.loader.grub.enable = false;
+              boot.loader.systemd-boot.enable = false;
+            }
+          ];
+        };
+      };
+
       nixosModules.default = import ./modules/default.nix self.overlays.default;
 
       overlays.default = final: prev:
