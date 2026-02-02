@@ -1,30 +1,33 @@
-# Tinygrad - A simple and powerful neural network framework
-# Note: Tinygrad is best installed via pip in a user environment:
-#   pip install tinygrad
+# TinyGrad - Minimalist deep learning framework
 #
-# This package definition is provided as a reference but may not build
-# without the correct source hash. To build from source, update the hash
-# by running: nix-prefetch-github tinygrad tinygrad --rev v0.9.2
+# RECOMMENDED: Use the flakes in llm/tinygrad/ for LLM inference:
+#   cd llm && nix develop
+#   tinygrad-llama 1B int8
+#
+# This package definition uses the vendor/tinygrad submodule for reproducibility.
+# For standalone builds, update the hash below.
 
 { lib
 , python3
-, fetchFromGitHub
+, callPackage
 , cudaSupport ? true
 }:
 
-python3.pkgs.buildPythonPackage rec {
+let
+  # Use vendored tinygrad if available, otherwise fetch from GitHub
+  tinygradSrc = if builtins.pathExists ../../vendor/tinygrad
+    then ../../vendor/tinygrad
+    else builtins.fetchGit {
+      url = "https://github.com/tinygrad/tinygrad";
+      ref = "master";
+    };
+in
+python3.pkgs.buildPythonPackage {
   pname = "tinygrad";
-  version = "0.9.2";
-  pyproject = true;
+  version = "0.10.0";
+  format = "pyproject";
 
-  # Note: Hash needs to be updated for actual builds
-  # Run: nix-prefetch-github tinygrad tinygrad --rev v0.9.2
-  src = fetchFromGitHub {
-    owner = "tinygrad";
-    repo = "tinygrad";
-    rev = "v${version}";
-    hash = "";  # Update with actual hash when building
-  };
+  src = tinygradSrc;
 
   nativeBuildInputs = with python3.pkgs; [
     setuptools
@@ -35,22 +38,26 @@ python3.pkgs.buildPythonPackage rec {
     numpy
     pillow
     tqdm
-    pyopencl
+    requests
+    # LLM dependencies
+    tiktoken
+    sentencepiece
   ];
 
-  # Skip tests as they require GPU
+  # Tests require GPU
   doCheck = false;
 
   pythonImportsCheck = [ "tinygrad" ];
 
   meta = with lib; {
-    description = "Simple and powerful neural network framework for Jetson";
+    description = "TinyGrad - minimalist deep learning framework for Jetson";
     longDescription = ''
-      Tinygrad is a lightweight machine learning framework that supports CUDA,
-      OpenCL, and other backends. Perfect for running ML models on Jetson devices.
-      
-      For production use, it's recommended to install via pip:
-        pip install tinygrad
+      TinyGrad is a lightweight ML framework supporting CUDA, OpenCL, and Metal.
+      Perfect for running LLMs on Jetson devices.
+
+      Quick start:
+        cd llm && nix develop
+        tinygrad-llama 1B int8
     '';
     homepage = "https://github.com/tinygrad/tinygrad";
     license = licenses.mit;
