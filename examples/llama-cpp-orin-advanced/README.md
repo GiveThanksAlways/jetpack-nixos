@@ -1,44 +1,111 @@
 # llama.cpp Advanced - Jetson Orin AGX
 
-## Quick Start
+## Prerequisites (Global NixOS Setup)
+
+Your Orin AGX must have jetpack-nixos configured globally in `/etc/nixos/`.
+
+**`/etc/nixos/flake.nix`:**
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    jetpack-nixos.url = "github:anduril/jetpack-nixos/master";
+    jetpack-nixos.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { nixpkgs, jetpack-nixos, ... }: {
+    nixosConfigurations.orin = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        jetpack-nixos.nixosModules.default
+        ./configuration.nix
+      ];
+    };
+  };
+}
+```
+
+**`/etc/nixos/configuration.nix`:**
+```nix
+{
+  hardware.nvidia-jetpack = {
+    enable = true;
+    som = "orin-agx";
+    carrierBoard = "devkit";
+  };
+  hardware.graphics.enable = true;
+  nixpkgs.config.allowUnfree = true;
+}
+```
+
+Apply: `sudo nixos-rebuild switch --flake /etc/nixos#orin`
+
+---
+
+## Quick Start (Local Dev Shell)
 
 ```bash
+cd /path/to/this/flake
 nix develop
-qwen3-coder  # Start chatting
+
+# Just type this to start chatting!
+qwen3-coder
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `qwen3-coder` | Interactive chat |
-| `qwen3-coder-server` | API server on :8080 |
-| `llama-benchmark` | Performance test |
+| `qwen3-coder` | Interactive chat (Q5_K_XL, ~57GB) |
+| `qwen3-coder Q4_K_M` | Use smaller quant (~35GB) |
+| `qwen3-server` | Start API server on :8080 |
+| `qwen3-server Q4_K_M 3000` | Server with custom quant/port |
+| `llama-benchmark` | Run performance benchmark |
 
-## NixOS with Systemd Service
+## API Server Usage
 
-```nix
-# In your configuration.nix
-services.llama-cpp = {
-  enable = true;
-  model = "unsloth/Qwen3-Coder-Next-GGUF:Q5_K_XL";
-  port = 8080;
-};
+```bash
+# Start server
+qwen3-server
+
+# In another terminal, test it:
+curl -X POST http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Write hello world in Python"}]}'
 ```
 
-## Using the Overlay
+## Using the Overlay in Other Flakes
 
 ```nix
-# In another flake
 {
   inputs.llama-orin.url = "path:./examples/llama-cpp-orin-advanced";
 
-  outputs = { self, nixpkgs, llama-orin, ... }: {
-    # Use llama-orin.overlays.default
+  outputs = { nixpkgs, llama-orin, ... }: {
+    # Apply overlay to get: llama-cpp-orin, qwen3-coder, qwen3-server
+    packages.aarch64-linux = let
+      pkgs = import nixpkgs {
+        system = "aarch64-linux";
+        overlays = [ llama-orin.overlays.default ];
+      };
+    in {
+      inherit (pkgs) llama-cpp-orin qwen3-coder;
+    };
   };
 }
 ```
 
-## Quant Options
+## Model Options
 
-`Q4_K_M` (fastest) → `Q5_K_M` → `Q5_K_XL` (recommended) → `Q6_K` → `Q8_0` (highest quality)
+| Quant | Size | Memory | Quality |
+|-------|------|--------|---------|
+| Q4_K_M | ~35GB | ~40GB | Good |
+| Q5_K_M | ~45GB | ~50GB | Better |
+| Q5_K_XL | ~57GB | ~64GB | Best (default) |
+
+## Troubleshooting
+
+**Out of VRAM:** Use smaller quant: `qwen3-coder Q4_K_M`
+
+**CUDA not working:** Run `nvidia-smi` - if it fails, check global NixOS config
+
+**Model download slow:** Downloads to `~/.cache/huggingface/` - ~57GB for Q5_K_XL
