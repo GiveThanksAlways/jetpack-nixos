@@ -885,53 +885,42 @@ If you started with the Traditional approach and want to switch to Flakes later:
 
 ### Flashing from WSL2 (Windows)
 
-When flashing from WSL2, USB devices must be attached via `usbipd`. The flash process involves
-multiple USB reconnects as the Jetson reboots through different stages, so **auto-attach is required**.
+
+When flashing from WSL2, **always use `--hardware-id` with `usbipd attach` and `--auto-attach`**. This ensures that even if the device reconnects on a different USB port (busid), it will still be recognized and re-attached automatically by its hardware ID (VID:PID). You only need to do this once for each unique device type (usually three: APX, Tegra On-Platform Operator, and serial cable).
 
 ```powershell
-# In PowerShell (Admin), first bind the devices to make them available:
-usbipd list                           # Find the NVIDIA devices (APX and Tegra On-Platform Operator)
-usbipd bind --busid <APX-busid>       # e.g., 4-6
-usbipd bind --busid <serial-busid>    # e.g., 6-4
+# In PowerShell (Admin):
+usbipd list                           # Find the NVIDIA devices (look for APX, Tegra, and serial cable)
 
-# Attach with auto-attach (re-attaches automatically after USB reconnects):
-usbipd attach --wsl --busid <APX-busid> --auto-attach
-usbipd attach --wsl --busid <serial-busid> --auto-attach
+# Attach each device by hardware ID (VID:PID) with auto-attach:
+usbipd attach --wsl --hardware-id 0955:7023 --auto-attach  # APX device
+usbipd attach --wsl --hardware-id 0955:7045 --auto-attach  # Tegra On-Platform Operator
+usbipd attach --wsl --hardware-id 0403:6001 --auto-attach  # Serial microUSB cable (example)
 ```
+
+> **Tip:** You only need to run each `usbipd attach --hardware-id ... --auto-attach` command once per device type. After that, the device will always auto-attach, even if it appears on a different port/busid after a reconnect.
 
 #### The Port-Hopping Problem
 
-During flashing, the Jetson disconnects and reconnects multiple times. Sometimes it comes back on a
-**different USB bus/port** (e.g., `4-6` becomes `1-3`). When this happens:
+During flashing, the Jetson may disconnect and reconnect on a **different USB bus/port** (e.g., `4-6` becomes `1-3`). If you use `--hardware-id`, you do **not** need to re-run the attach command for new busids—the device will be recognized and re-attached automatically, regardless of which port it appears on.
 
-1. The device shows as "Shared" or "Not shared" instead of "Attached"
-2. You need to quickly `bind` and `attach` the new busid
-3. The flash script may time out waiting if you're too slow
+**Practical approach:**
 
-**Practical approach:** Keep multiple PowerShell Admin windows open and monitor with `usbipd list`.
-Listen for the USB disconnect/reconnect sound cues from Windows, then check which busid changed.
+- Run `usbipd attach --wsl --hardware-id <VID:PID> --auto-attach` for each device type (APX, Tegra, serial) at the start.
+- You do **not** need to monitor busids or re-attach for port changes.
+- If a new device type appears (rare), just run the attach command for its hardware ID once.
 
-> Note: seems like at most it was three, so once you have --auto-attach running for three different ones, that should be it
-
-```powershell
-# When you see a new device appear (e.g., COM10 on busid 1-3):
-usbipd bind --busid 1-3
-usbipd attach --wsl --busid 1-3 --auto-attach
-
-# You can also use 'usbipd attach --wsl --hardware-id VID:PID' to attach by VID:PID instead:
-usbipd attach --wsl --hardware-id 0955:7023 --auto-attach  # APX device
-usbipd attach --wsl --hardware-id 0955:7045 --auto-attach  # Tegra On-Platform Operator
-```
+> Note: In practice, you only need to do this for three hardware IDs. Once set, auto-attach will handle all future reconnects, even if the port changes.
 
 #### The "Flashing may have failed" False Alarm
+
 
 Even when flashing succeeds, WSL2 may report "Flashing may have failed" because:
 
 - The serial connection times out during the final reboot
 - The Jetson disconnected before the expect script could confirm success
 
-**Check the serial console** - if you see `Jetson UEFI firmware (version X.X.X)` and a boot menu,
-the flash succeeded regardless of what the script reported.
+**Check the serial console**—if you see `Jetson UEFI firmware (version X.X.X)` and a boot menu, the flash succeeded regardless of what the script reported.
 
 ### What Gets Flashed
 
