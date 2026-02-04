@@ -46,10 +46,13 @@ Apply with: `sudo nixos-rebuild switch --flake /etc/nixos#orin`
 ```bash
 # On your Jetson (after global NixOS is configured)
 cd /path/to/this/flake
-nix develop
+nix develop  # Builds latest llama.cpp from source with CUDA support
 
-# Run Qwen3-Coder-Next (~57GB, downloads automatically)
+# Run a supported model (llama.cpp now has qwen3next support)
 llama-cli -hf unsloth/Qwen3-Coder-Next-GGUF:Q5_K_XL --gpu-layers 999
+
+# Or use other models
+llama-cli -hf mistralai/Mistral-7B-Instruct-v0.2 --gpu-layers 999
 ```
 
 ## Model Options
