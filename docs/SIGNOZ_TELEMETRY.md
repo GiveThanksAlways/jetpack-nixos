@@ -1,6 +1,6 @@
-# SigNoz Telemetry for NVIDIA Jetson
+# Native NixOS Telemetry for NVIDIA Jetson
 
-Modern observability platform with fine-grained GPU telemetry.
+Pure NixOS observability stack - no Docker required!
 
 ## Quick Start
 
@@ -8,18 +8,25 @@ Modern observability platform with fine-grained GPU telemetry.
 sudo nixos-rebuild switch --flake .#signoz
 ```
 
-Access SigNoz: http://localhost:3301
+Access Grafana: http://localhost:3301
 
-## Setup Guide
+## Features
 
-See [SETUP.md](SETUP.md) for complete TL;DR guide.
+- ✅ Pure NixOS systemd services
+- ✅ Fine-grained GPU telemetry (500ms)
+- ✅ Auto-provisioned dashboard
+- ✅ No Docker dependencies
+
+## Setup
+
+See [SETUP.md](SETUP.md) for complete guide.
 
 ## Configuration
 
 ```nix
 services.signoz-telemetry = {
   enable = true;
-  enableTegrastats = true;      # Fine-grained GPU metrics (500ms)
+  enableTegrastats = true;      # GPU metrics
   enableNodeExporter = true;     # System metrics
 };
 ```

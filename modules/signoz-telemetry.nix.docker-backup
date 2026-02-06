@@ -149,158 +149,214 @@ EOF_METRICS
     done
   '';
 
-  # Grafana dashboard for Jetson GPU telemetry
-  gpuDashboard = pkgs.writeText "jetson-gpu-dashboard.json" (builtins.toJSON {
-    title = "Jetson GPU Telemetry";
-    tags = ["jetson" "nvidia" "gpu"];
-    timezone = "browser";
-    refresh = "5s";
-    time = {
-      from = "now-5m";
-      to = "now";
-    };
-    panels = [
-      {
-        id = 1;
-        title = "GPU Utilization";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 0; };
-        targets = [{
-          expr = "jetson_gpu_usage_percent";
-          legendFormat = "GPU Usage %";
-        }];
-        fieldConfig.defaults = {
-          unit = "percent";
-          min = 0;
-          max = 100;
-          custom.fillOpacity = 10;
-        };
+  # OpenTelemetry Collector configuration
+  otelCollectorConfig = pkgs.writeText "otel-collector-config.yaml" ''
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            # Tegrastats metrics
+            - job_name: 'jetson-tegrastats'
+              scrape_interval: 5s
+              static_configs:
+                - targets: ['localhost:9101']
+                  labels:
+                    device: 'jetson-orin-agx'
+                    source: 'tegrastats'
+            
+            # Node Exporter metrics
+            - job_name: 'jetson-system'
+              scrape_interval: 15s
+              static_configs:
+                - targets: ['localhost:9100']
+                  labels:
+                    device: 'jetson-orin-agx'
+                    source: 'node-exporter'
+
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+      
+      # Add resource attributes
+      resource:
+        attributes:
+          - key: service.name
+            value: jetson-telemetry
+            action: upsert
+          - key: device.type
+            value: nvidia-jetson-orin-agx
+            action: upsert
+
+    exporters:
+      otlp:
+        endpoint: localhost:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [batch, resource]
+          exporters: [otlp]
+  '';
+
+  # SigNoz Docker Compose configuration
+  signozComposeFile = pkgs.writeText "signoz-docker-compose.yaml" ''
+    version: "3.9"
+
+    x-clickhouse-defaults: &clickhouse-defaults
+      restart: on-failure
+      image: clickhouse/clickhouse-server:23.11.1-alpine
+      tty: true
+      depends_on:
+        - zookeeper-1
+      logging:
+        options:
+          max-size: 50m
+          max-file: "3"
+      healthcheck:
+        test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
+        interval: 30s
+        timeout: 5s
+        retries: 3
+      ulimits:
+        nproc: 65535
+        nofile:
+          soft: 262144
+          hard: 262144
+
+    services:
+      zookeeper-1:
+        image: bitnami/zookeeper:3.7.1
+        container_name: signoz-zookeeper-1
+        hostname: zookeeper-1
+        user: root
+        ports:
+          - "2181:2181"
+          - "2888:2888"
+          - "3888:3888"
+        volumes:
+          - ${cfg.dataDir}/zookeeper-1:/bitnami/zookeeper
+        environment:
+          - ZOO_SERVER_ID=1
+          - ALLOW_ANONYMOUS_LOGIN=yes
+          - ZOO_AUTOPURGE_INTERVAL=1
+
+      clickhouse:
+        <<: *clickhouse-defaults
+        container_name: signoz-clickhouse
+        hostname: clickhouse
+        ports:
+          - "9000:9000"
+          - "8123:8123"
+          - "9181:9181"
+        volumes:
+          - ${cfg.dataDir}/clickhouse:/var/lib/clickhouse/
+        environment:
+          - CLICKHOUSE_DB=signoz
+
+      query-service:
+        image: signoz/query-service:0.39.0
+        container_name: signoz-query-service
+        command:
+          [
+            "-config=/root/config/prometheus.yml"
+          ]
+        ports:
+          - "6060:6060"
+          - "8080:8080"
+        volumes:
+          - ${cfg.dataDir}/prometheus.yml:/root/config/prometheus.yml
+        environment:
+          - ClickHouseUrl=tcp://clickhouse:9000
+          - STORAGE=clickhouse
+          - GODEBUG=netdns=go
+          - TELEMETRY_ENABLED=true
+          - DEPLOYMENT_TYPE=docker-standalone-arm64
+        depends_on:
+          - clickhouse
+
+      otel-collector:
+        image: signoz/signoz-otel-collector:0.88.11
+        container_name: signoz-otel-collector
+        command:
+          [
+            "--config=/etc/otel-collector-config.yaml"
+          ]
+        user: root
+        volumes:
+          - ${otelCollectorConfig}:/etc/otel-collector-config.yaml
+        ports:
+          - "4317:4317"     # OTLP gRPC receiver
+          - "4318:4318"     # OTLP HTTP receiver
+        depends_on:
+          - clickhouse
+
+      frontend:
+        image: signoz/frontend:0.39.0
+        container_name: signoz-frontend
+        restart: on-failure
+        depends_on:
+          - query-service
+        ports:
+          - "${toString cfg.port}:3301"
+        volumes:
+          - ${cfg.dataDir}/nginx-config.conf:/etc/nginx/conf.d/default.conf
+
+    networks:
+      default:
+        name: signoz-network
+  '';
+
+  # Prometheus config for SigNoz query service
+  prometheusYml = pkgs.writeText "prometheus.yml" ''
+    global:
+      scrape_interval: 60s
+
+    scrape_configs:
+      - job_name: 'otel-collector'
+        static_configs:
+          - targets: ['otel-collector:8888']
+  '';
+
+  # Nginx config for SigNoz frontend
+  nginxConfig = pkgs.writeText "nginx-config.conf" ''
+    server {
+      listen 3301;
+      server_name _;
+
+      location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
       }
-      {
-        id = 2;
-        title = "GPU Frequency";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 12; y = 0; };
-        targets = [{
-          expr = "jetson_gpu_freq_mhz";
-          legendFormat = "GPU Freq (MHz)";
-        }];
-        fieldConfig.defaults.unit = "hertz";
+
+      location /api {
+        proxy_pass http://query-service:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
       }
-      {
-        id = 3;
-        title = "CPU Usage by Core";
-        type = "timeseries";
-        gridPos = { h = 8; w = 24; x = 0; y = 8; };
-        targets = [{
-          expr = "jetson_cpu_usage_percent";
-          legendFormat = "Core {{core}}";
-        }];
-        fieldConfig.defaults = {
-          unit = "percent";
-          min = 0;
-          max = 100;
-        };
-      }
-      {
-        id = 4;
-        title = "Memory Usage";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 16; };
-        targets = [
-          {
-            expr = "jetson_ram_used_mb";
-            legendFormat = "RAM Used (MB)";
-          }
-          {
-            expr = "jetson_swap_used_mb";
-            legendFormat = "SWAP Used (MB)";
-          }
-        ];
-        fieldConfig.defaults.unit = "decmbytes";
-      }
-      {
-        id = 5;
-        title = "Temperatures";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 12; y = 16; };
-        targets = [{
-          expr = "jetson_temperature_celsius";
-          legendFormat = "{{sensor}}";
-        }];
-        fieldConfig.defaults = {
-          unit = "celsius";
-          thresholds = {
-            mode = "absolute";
-            steps = [
-              { value = null; color = "green"; }
-              { value = 70; color = "yellow"; }
-              { value = 85; color = "red"; }
-            ];
-          };
-        };
-      }
-      {
-        id = 6;
-        title = "Power Consumption";
-        type = "timeseries";
-        gridPos = { h = 8; w = 24; x = 0; y = 24; };
-        targets = [{
-          expr = "jetson_power_mw";
-          legendFormat = "{{rail}}";
-        }];
-        fieldConfig.defaults.unit = "watt";
-      }
-      {
-        id = 7;
-        title = "Memory Controller Load";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 32; };
-        targets = [{
-          expr = "jetson_emc_freq_percent";
-          legendFormat = "EMC Load %";
-        }];
-        fieldConfig.defaults = {
-          unit = "percent";
-          min = 0;
-          max = 100;
-        };
-      }
-      {
-        id = 8;
-        title = "Video & Audio Engines";
-        type = "stat";
-        gridPos = { h = 8; w = 12; x = 12; y = 32; };
-        targets = [
-          {
-            expr = "jetson_vic_freq";
-            legendFormat = "VIC";
-          }
-          {
-            expr = "jetson_ape_freq";
-            legendFormat = "APE";
-          }
-        ];
-      }
-    ];
-  });
+    }
+  '';
 
 in
 {
   options = {
     services.signoz-telemetry = {
-      enable = mkEnableOption "Native NixOS telemetry and monitoring for NVIDIA Jetson devices";
+      enable = mkEnableOption "SigNoz telemetry and monitoring for NVIDIA Jetson devices";
 
       dataDir = mkOption {
         type = types.path;
         default = "/var/lib/signoz-telemetry";
-        description = "Data directory for telemetry services";
+        description = "Data directory for SigNoz telemetry services";
       };
 
       port = mkOption {
         type = types.port;
         default = 3301;
-        description = "Port for Grafana web UI";
+        description = "Port for SigNoz web UI";
       };
 
       enableTegrastats = mkOption {
@@ -314,12 +370,6 @@ in
         default = true;
         description = "Enable Prometheus Node Exporter for system metrics";
       };
-
-      retentionTime = mkOption {
-        type = types.str;
-        default = "30d";
-        description = "Prometheus metrics retention time";
-      };
     };
   };
 
@@ -330,12 +380,20 @@ in
       ++ lib.optionals (pkgs.nvidia-jetpack.l4tAtLeast "36") 
         [ pkgs.nvidia-jetpack.nvidia-smi ];
 
+    # Enable Docker for SigNoz stack
+    virtualisation.docker = {
+      enable = true;
+      autoPrune.enable = true;
+    };
+
     # Create data directory structure
     systemd.tmpfiles.rules = [
       "d ${cfg.dataDir} 0755 root root -"
       "d ${cfg.dataDir}/metrics 0755 root root -"
-      "d ${cfg.dataDir}/prometheus 0755 root root -"
-      "d ${cfg.dataDir}/grafana 0755 root root -"
+      "d ${cfg.dataDir}/clickhouse 0755 root root -"
+      "d ${cfg.dataDir}/zookeeper-1 0755 root root -"
+      "L+ ${cfg.dataDir}/prometheus.yml - - - - ${prometheusYml}"
+      "L+ ${cfg.dataDir}/nginx-config.conf - - - - ${nginxConfig}"
     ];
 
     # Tegrastats metrics exporter service (enhanced for fine-grained GPU metrics)
@@ -383,108 +441,75 @@ in
     };
 
     # Prometheus Node Exporter for system metrics
-    services.prometheus.exporters.node = mkIf cfg.enableNodeExporter {
-      enable = true;
-      port = 9100;
-      enabledCollectors = [
-        "cpu"
-        "loadavg"
-        "meminfo"
-        "diskstats"
-        "filesystem"
-        "netdev"
-        "thermal_zone"
-      ];
-    };
-
-    # Prometheus for metrics collection and storage
-    services.prometheus = {
-      enable = true;
-      port = 9090;
+    systemd.services.node-exporter = mkIf cfg.enableNodeExporter {
+      description = "Prometheus Node Exporter";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
       
-      retentionTime = cfg.retentionTime;
-      
-      scrapeConfigs = [
-        {
-          job_name = "jetson-tegrastats";
-          scrape_interval = "5s";
-          static_configs = [{
-            targets = [ "localhost:9101" ];
-            labels = {
-              device = "jetson-orin-agx";
-              source = "tegrastats";
-            };
-          }];
-        }
-        {
-          job_name = "jetson-system";
-          scrape_interval = "15s";
-          static_configs = [{
-            targets = [ "localhost:9100" ];
-            labels = {
-              device = "jetson-orin-agx";
-              source = "node-exporter";
-            };
-          }];
-        }
-      ];
-    };
-
-    # Grafana for visualization
-    services.grafana = {
-      enable = true;
-      
-      settings = {
-        server = {
-          http_addr = "0.0.0.0";
-          http_port = cfg.port;
-          domain = "localhost";
-        };
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = ''
+          ${pkgs.prometheus-node-exporter}/bin/node_exporter \
+            --web.listen-address=:9100 \
+            --collector.filesystem \
+            --collector.cpu \
+            --collector.meminfo \
+            --collector.diskstats \
+            --collector.netdev \
+            --collector.loadavg \
+            --collector.thermal
+        '';
+        Restart = "on-failure";
+        RestartSec = "10s";
         
-        "auth.anonymous" = {
-          enabled = true;
-          org_role = "Viewer";
-        };
-        
-        analytics.reporting_enabled = false;
-      };
-      
-      provision = {
-        enable = true;
-        
-        datasources.settings.datasources = [{
-          name = "Prometheus";
-          type = "prometheus";
-          access = "proxy";
-          url = "http://localhost:9090";
-          isDefault = true;
-          editable = false;
-        }];
-        
-        dashboards.settings = {
-          apiVersion = 1;
-          providers = [{
-            name = "Jetson Telemetry";
-            folder = "Jetson";
-            type = "file";
-            disableDeletion = false;
-            updateIntervalSeconds = 30;
-            allowUiUpdates = true;
-            options.path = "${cfg.dataDir}/grafana/dashboards";
-          }];
-        };
+        DynamicUser = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
       };
     };
 
-    # Install GPU dashboard
-    systemd.tmpfiles.rules = [
-      "L+ ${cfg.dataDir}/grafana/dashboards/jetson-gpu.json - - - - ${gpuDashboard}"
-    ];
+    # SigNoz stack via Docker Compose
+    systemd.services.signoz-stack = {
+      description = "SigNoz Observability Platform";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "docker.service" "network-online.target" ];
+      requires = [ "docker.service" ];
+      
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        WorkingDirectory = cfg.dataDir;
+        
+        ExecStartPre = [
+          "${pkgs.coreutils}/bin/mkdir -p ${cfg.dataDir}"
+          "${pkgs.coreutils}/bin/cp ${signozComposeFile} ${cfg.dataDir}/docker-compose.yaml"
+        ];
+        
+        ExecStart = ''
+          ${pkgs.docker-compose}/bin/docker-compose \
+            -f ${cfg.dataDir}/docker-compose.yaml \
+            up -d
+        '';
+        
+        ExecStop = ''
+          ${pkgs.docker-compose}/bin/docker-compose \
+            -f ${cfg.dataDir}/docker-compose.yaml \
+            down
+        '';
+        
+        ExecReload = ''
+          ${pkgs.docker-compose}/bin/docker-compose \
+            -f ${cfg.dataDir}/docker-compose.yaml \
+            restart
+        '';
+      };
+    };
 
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [
-      cfg.port      # Grafana UI
-      9090          # Prometheus
+      cfg.port      # SigNoz Frontend UI
+      4317          # OTLP gRPC
+      4318          # OTLP HTTP
       9100          # Node Exporter
       9101          # Tegrastats HTTP server
     ];
@@ -493,18 +518,23 @@ in
     system.activationScripts.signoz-telemetry-info = lib.mkIf cfg.enable ''
       echo ""
       echo "=========================================="
-      echo "Native NixOS Telemetry Stack Enabled"
+      echo "SigNoz Telemetry Stack Enabled"
       echo "=========================================="
-      echo "Grafana UI: http://localhost:${toString cfg.port}"
-      echo "Prometheus: http://localhost:9090"
+      echo "SigNoz UI: http://localhost:${toString cfg.port}"
       echo ""
-      echo "Pure NixOS implementation - No Docker!"
-      echo ""
-      echo "Collecting fine-grained metrics:"
-      echo "  - Tegrastats (500ms GPU sampling)"
+      echo "Collecting fine-grained metrics from:"
+      echo "  - Tegrastats (GPU, CPU, RAM, Power, Temps)"
       echo "  - Node Exporter (System metrics)"
       echo ""
-      echo "GPU Dashboard auto-provisioned!"
+      echo "GPU Metrics include:"
+      echo "  - GPU usage % and frequency"
+      echo "  - EMC (memory controller) usage and freq"
+      echo "  - VIC (video) and APE (audio) frequencies"
+      echo "  - Per-core CPU usage and frequencies"
+      echo "  - Temperature sensors (all zones)"
+      echo "  - Power rails (VDD_IN, CPU_GPU_CV, SOC)"
+      echo ""
+      echo "Wait 30-60 seconds for services to start"
       echo "=========================================="
       echo ""
     '';

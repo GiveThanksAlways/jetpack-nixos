@@ -10,7 +10,7 @@ This repository packages components from NVIDIA's [JetPack SDK](https://develope
    - Multimedia: hardware accelerated encoding/decoding with V4L2 and gstreamer plugins
    - Graphics: Wayland, GBM, EGL, Vulkan
    - Power/fan control: nvpmodel, nvfancontrol
-   - **Observability**: Native SigNoz telemetry with fine-grained GPU monitoring and modern visualizations (see [docs/SETUP.md](docs/SETUP.md))
+   - **Observability**: Native NixOS telemetry with fine-grained GPU monitoring (see [docs/SETUP.md](docs/SETUP.md))
 
 This package supports JetPack 5, 6, and 7. It works with NVIDIA's developer kits supported by these versions only:
 
@@ -249,9 +249,9 @@ format. By default, there will be a single device setup of the kind
 
 If you are using Podman, it is recommended to add a dependency to any systemd services that run podman to specify `After=nvidia-container-toolkit-cdi-generator.service`. Due to Podman's daemonless nature, this ensures that the CDI configuration files are generated prior to container start.
 
-### Observability with SigNoz
+### Native NixOS Telemetry
 
-Native SigNoz telemetry provides modern observability with fine-grained GPU monitoring and space-age visualizations.
+Pure NixOS telemetry stack provides fine-grained GPU monitoring with zero Docker dependencies.
 
 **Quick Start:**
 ```bash
@@ -262,21 +262,22 @@ Or add to your configuration:
 ```nix
 services.signoz-telemetry = {
   enable = true;
-  enableTegrastats = true;      # Fine-grained GPU metrics (500ms sampling)
+  enableTegrastats = true;      # Fine-grained GPU metrics (500ms)
   enableNodeExporter = true;     # System metrics
 };
 ```
 
-Access SigNoz at `http://localhost:3301` after activation.
+Access Grafana at `http://localhost:3301` after activation.
 
 **Features:**
+- Pure NixOS systemd services (no Docker)
 - Fine-grained GPU telemetry (500ms sampling)
 - GPU, EMC, VIC, APE frequency monitoring
 - Per-core CPU usage and frequency
 - Temperature monitoring (all sensors)
 - Power consumption by rail
-- Modern SigNoz WebUI
-- Dedicated GPU dashboard views
+- Auto-provisioned GPU dashboard
+- Grafana WebUI
 
 For complete setup guide, see [docs/SETUP.md](docs/SETUP.md).
 
