@@ -112,6 +112,34 @@
           ];
         }))
         supportedConfigurations;
+      # Configuration for SigNoz telemetry
+      signoz_config = {
+        imports = [
+          self.nixosModules.default
+          {
+            services.signoz-telemetry = {
+              enable = true;
+              enableTegrastats = true;
+              enableNodeExporter = true;
+              enableNvidiaSmi = true;
+            };
+            hardware.nvidia-jetpack.enable = true;
+            hardware.nvidia-jetpack.som = "orin-agx";
+            hardware.nvidia-jetpack.carrierBoard = "devkit";
+            hardware.graphics.enable = true;
+            nixpkgs.config.allowUnfree = true;
+            
+            # Basic system configuration
+            fileSystems."/".fsType = "ext4";
+            boot.loader.grub.enable = false;
+            boot.loader.systemd-boot.enable = true;
+            boot.loader.efi.canTouchEfiVariables = true;
+            
+            networking.hostName = "jetson-signoz";
+            system.stateVersion = "25.11";
+          }
+        ];
+      };
     in
     {
       nixosConfigurations = {
@@ -132,6 +160,11 @@
         };
         installer_minimal_cross_jp7 = nixpkgs.lib.nixosSystem {
           modules = [ aarch64_cross_config installer_minimal_config jetpack7_config ];
+        };
+        
+        # SigNoz telemetry configuration
+        signoz = nixpkgs.lib.nixosSystem {
+          modules = [ aarch64_config signoz_config ];
         };
       }
       // supportedNixOSConfigurations;
