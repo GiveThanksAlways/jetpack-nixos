@@ -58,6 +58,8 @@ let
         cpu_data=''${BASH_REMATCH[1]}
         echo "# HELP jetson_cpu_usage_percent CPU usage percentage per core" >> "$METRICS_FILE.tmp"
         echo "# TYPE jetson_cpu_usage_percent gauge" >> "$METRICS_FILE.tmp"
+        echo "# HELP jetson_cpu_freq_mhz CPU frequency in MHz" >> "$METRICS_FILE.tmp"
+        echo "# TYPE jetson_cpu_freq_mhz gauge" >> "$METRICS_FILE.tmp"
         
         core_num=0
         IFS=',' read -ra CORES <<< "$cpu_data"
@@ -66,8 +68,6 @@ let
             cpu_usage=''${BASH_REMATCH[1]}
             cpu_freq=''${BASH_REMATCH[2]}
             echo "jetson_cpu_usage_percent{core=\"$core_num\"} $cpu_usage $timestamp" >> "$METRICS_FILE.tmp"
-            echo "# HELP jetson_cpu_freq_mhz CPU frequency in MHz" >> "$METRICS_FILE.tmp"
-            echo "# TYPE jetson_cpu_freq_mhz gauge" >> "$METRICS_FILE.tmp"
             echo "jetson_cpu_freq_mhz{core=\"$core_num\"} $cpu_freq $timestamp" >> "$METRICS_FILE.tmp"
             ((core_num++))
           fi
@@ -87,21 +87,21 @@ let
       fi
       
       # Extract temperatures (various sensors)
+      echo "# HELP jetson_temperature_celsius Temperature in Celsius" >> "$METRICS_FILE.tmp"
+      echo "# TYPE jetson_temperature_celsius gauge" >> "$METRICS_FILE.tmp"
       temp_pattern="([A-Z0-9_]+)@([0-9.-]+)C"
       while [[ $line =~ $temp_pattern ]]; do
         sensor=''${BASH_REMATCH[1]}
         temp=''${BASH_REMATCH[2]}
-        echo "# HELP jetson_temperature_celsius Temperature in Celsius" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_temperature_celsius gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_temperature_celsius{sensor=\"$sensor\"} $temp $timestamp" >> "$METRICS_FILE.tmp"
         line="''${line/$sensor@$temp''C/}"
       done
       
       # Extract power consumption
+      echo "# HELP jetson_power_mw Power consumption in milliwatts" >> "$METRICS_FILE.tmp"
+      echo "# TYPE jetson_power_mw gauge" >> "$METRICS_FILE.tmp"
       if [[ $line =~ VDD_IN\ ([0-9]+)/([0-9]+) ]]; then
         power_in=''${BASH_REMATCH[1]}
-        echo "# HELP jetson_power_mw Power consumption in milliwatts" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_power_mw gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_power_mw{rail=\"VDD_IN\"} $power_in $timestamp" >> "$METRICS_FILE.tmp"
       fi
       
@@ -282,7 +282,7 @@ in
         ExecStart = ''
           ${pkgs.victoriametrics}/bin/victoria-metrics \
             -storageDataPath=${cfg.dataDir}/victoria-metrics \
-            -retentionPeriod=12 \
+            -retentionPeriod=12M \
             -httpListenAddr=:8428
         '';
         Restart = "on-failure";
