@@ -1,0 +1,343 @@
+{
+  "dashboard": {
+    "title": "NVIDIA Jetson Telemetry",
+    "tags": ["jetson", "nvidia", "telemetry"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "GPU Utilization",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "targets": [
+          {
+            "expr": "jetson_gpu_usage_percent",
+            "legendFormat": "GPU Usage %",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        },
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom" }
+        }
+      },
+      {
+        "id": 2,
+        "title": "GPU Frequency",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "targets": [
+          {
+            "expr": "jetson_gpu_freq_mhz",
+            "legendFormat": "GPU Freq (MHz)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "MHz",
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "CPU Usage by Core",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+        "targets": [
+          {
+            "expr": "jetson_cpu_usage_percent",
+            "legendFormat": "Core {{core}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "targets": [
+          {
+            "expr": "jetson_ram_used_mb",
+            "legendFormat": "RAM Used (MB)",
+            "refId": "A"
+          },
+          {
+            "expr": "jetson_ram_total_mb",
+            "legendFormat": "RAM Total (MB)",
+            "refId": "B"
+          },
+          {
+            "expr": "jetson_swap_used_mb",
+            "legendFormat": "SWAP Used (MB)",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes",
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Temperatures",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "targets": [
+          {
+            "expr": "jetson_temperature_celsius",
+            "legendFormat": "{{sensor}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": null, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 85, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Power Consumption",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+        "targets": [
+          {
+            "expr": "jetson_power_mw",
+            "legendFormat": "{{rail}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "mwatt",
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2,
+              "stacking": { "mode": "normal" }
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "System Stats",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 32 },
+        "targets": [
+          {
+            "expr": "avg(jetson_cpu_usage_percent)",
+            "legendFormat": "Avg CPU",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": null, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 90, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "title": "GPU Status",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 32 },
+        "targets": [
+          {
+            "expr": "jetson_gpu_usage_percent",
+            "legendFormat": "GPU",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": null, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 90, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "RAM Usage %",
+        "type": "gauge",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 32 },
+        "targets": [
+          {
+            "expr": "100 * jetson_ram_used_mb / jetson_ram_total_mb",
+            "legendFormat": "RAM",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": null, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 90, "color": "red" }
+              ]
+            }
+          }
+        },
+        "options": {
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 10,
+        "title": "Max Temperature",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 32 },
+        "targets": [
+          {
+            "expr": "max(jetson_temperature_celsius)",
+            "legendFormat": "Max Temp",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": null, "color": "green" },
+                { "value": 70, "color": "yellow" },
+                { "value": 85, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Disk Usage",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+        "targets": [
+          {
+            "expr": "100 * (1 - node_filesystem_avail_bytes / node_filesystem_size_bytes)",
+            "legendFormat": "{{mountpoint}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Network Traffic",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+        "targets": [
+          {
+            "expr": "rate(node_network_receive_bytes_total[5m]) * 8",
+            "legendFormat": "RX {{device}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(node_network_transmit_bytes_total[5m]) * 8",
+            "legendFormat": "TX {{device}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "bps",
+            "color": { "mode": "palette-classic" },
+            "custom": {
+              "fillOpacity": 10,
+              "lineWidth": 2
+            }
+          }
+        }
+      }
+    ]
+  }
+}

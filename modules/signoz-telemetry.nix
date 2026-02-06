@@ -352,8 +352,29 @@ in
             url = "http://localhost:9090";
           }
         ];
+        
+        # Pre-load Jetson telemetry dashboard
+        dashboards.settings = {
+          apiVersion = 1;
+          providers = [
+            {
+              name = "Jetson Telemetry";
+              folder = "Jetson";
+              type = "file";
+              disableDeletion = false;
+              updateIntervalSeconds = 10;
+              allowUiUpdates = true;
+              options = {
+                path = "/etc/grafana/dashboards";
+              };
+            }
+          ];
+        };
       };
     };
+
+    # Install the Jetson dashboard
+    environment.etc."grafana/dashboards/jetson-telemetry.json".source = ./grafana-dashboard-jetson.json;
 
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [

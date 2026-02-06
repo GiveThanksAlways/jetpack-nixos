@@ -10,6 +10,7 @@ This repository packages components from NVIDIA's [JetPack SDK](https://develope
    - Multimedia: hardware accelerated encoding/decoding with V4L2 and gstreamer plugins
    - Graphics: Wayland, GBM, EGL, Vulkan
    - Power/fan control: nvpmodel, nvfancontrol
+   - **Telemetry & Monitoring**: Comprehensive system and GPU telemetry with Grafana WebUI (see [docs/SIGNOZ_TELEMETRY.md](docs/SIGNOZ_TELEMETRY.md))
 
 This package supports JetPack 5, 6, and 7. It works with NVIDIA's developer kits supported by these versions only:
 
@@ -247,6 +248,37 @@ format. By default, there will be a single device setup of the kind
 `--device=nvidia.com/gpu=all` when starting your container.
 
 If you are using Podman, it is recommended to add a dependency to any systemd services that run podman to specify `After=nvidia-container-toolkit-cdi-generator.service`. Due to Podman's daemonless nature, this ensures that the CDI configuration files are generated prior to container start.
+
+### Telemetry & Monitoring
+
+Comprehensive telemetry and monitoring is available for Jetson devices through the SigNoz telemetry module. This provides real-time visualization of GPU, CPU, memory, storage, temperature, and power metrics through a modern Grafana WebUI.
+
+**Quick Start:**
+```bash
+sudo nixos-rebuild switch --flake github:anduril/jetpack-nixos#signoz
+```
+
+Or add to your configuration:
+```nix
+services.signoz-telemetry = {
+  enable = true;
+  enableTegrastats = true;      # Jetson GPU/CPU/Power metrics
+  enableNodeExporter = true;     # System metrics
+};
+```
+
+Access the dashboard at `http://localhost:3301` after activation.
+
+**Features:**
+- Real-time GPU utilization and frequency monitoring
+- Per-core CPU usage and frequency
+- Memory (RAM/SWAP) usage tracking
+- Temperature monitoring (all sensors)
+- Power consumption by rail
+- Storage and network I/O metrics
+- Pre-configured Grafana dashboards
+
+For detailed documentation, see [docs/SIGNOZ_TELEMETRY.md](docs/SIGNOZ_TELEMETRY.md).
 
 ### Using the kernel package sets
 
