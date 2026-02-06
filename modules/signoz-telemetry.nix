@@ -185,7 +185,7 @@ EOF_METRICS
           expr = "jetson_gpu_freq_mhz";
           legendFormat = "GPU Freq (MHz)";
         }];
-        fieldConfig.defaults.unit = "hertz";
+        fieldConfig.defaults.unit = "MHz";
       }
       {
         id = 3;
@@ -217,7 +217,7 @@ EOF_METRICS
             legendFormat = "SWAP Used (MB)";
           }
         ];
-        fieldConfig.defaults.unit = "decmbytes";
+        fieldConfig.defaults.unit = "mbytes";
       }
       {
         id = 5;
@@ -249,7 +249,7 @@ EOF_METRICS
           expr = "jetson_power_mw";
           legendFormat = "{{rail}}";
         }];
-        fieldConfig.defaults.unit = "watt";
+        fieldConfig.defaults.unit = "mwatt";
       }
       {
         id = 7;
@@ -336,6 +336,8 @@ in
       "d ${cfg.dataDir}/metrics 0755 root root -"
       "d ${cfg.dataDir}/prometheus 0755 root root -"
       "d ${cfg.dataDir}/grafana 0755 root root -"
+      "d ${cfg.dataDir}/grafana/dashboards 0755 root root -"
+      "L+ ${cfg.dataDir}/grafana/dashboards/jetson-gpu.json - - - - ${gpuDashboard}"
     ];
 
     # Tegrastats metrics exporter service (enhanced for fine-grained GPU metrics)
@@ -393,7 +395,7 @@ in
         "diskstats"
         "filesystem"
         "netdev"
-        "thermal_zone"
+        "thermal"
       ];
     };
 
@@ -474,12 +476,6 @@ in
           }];
         };
       };
-    };
-
-    # Install GPU dashboard
-    systemd.tmpfiles.rules = [
-      "L+ ${cfg.dataDir}/grafana/dashboards/jetson-gpu.json - - - - ${gpuDashboard}"
-    ];
 
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [
