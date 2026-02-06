@@ -4,8 +4,8 @@
 
 ### Quick Start
 ```bash
-# Pull and activate
-git pull origin copilot/add-signoz-telemetry-webui
+# Pull latest changes and activate
+git pull
 sudo nixos-rebuild switch --flake .#signoz
 
 # Wait 30-60 seconds for Docker containers to start
@@ -197,10 +197,10 @@ sudo docker logs signoz-frontend -f
 sudo systemctl status tegrastats-exporter
 
 # Check metrics file exists
-ls -lh /var/lib/signoz-telemetry/tegrastats-metrics.prom
+ls -lh /var/lib/signoz-telemetry/metrics/tegrastats-metrics.prom
 
 # View raw metrics
-cat /var/lib/signoz-telemetry/tegrastats-metrics.prom
+cat /var/lib/signoz-telemetry/metrics/tegrastats-metrics.prom
 
 # Check OTel collector
 sudo docker logs signoz-otel-collector -f

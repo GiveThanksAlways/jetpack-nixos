@@ -16,7 +16,7 @@ let
 
     # Configuration
     TEGRASTATS_BIN="${pkgs.nvidia-jetpack.l4t-tools}/bin/tegrastats"
-    METRICS_FILE="/var/lib/signoz-telemetry/tegrastats-metrics.prom"
+    METRICS_FILE="/var/lib/signoz-telemetry/metrics/tegrastats-metrics.prom"
     INTERVAL_MS=500  # Sample every 500ms for fine-grained metrics
 
     # Ensure metrics directory exists
@@ -274,7 +274,7 @@ EOF_METRICS
           - STORAGE=clickhouse
           - GODEBUG=netdns=go
           - TELEMETRY_ENABLED=true
-          - DEPLOYMENT_TYPE=docker-standalone-amd
+          - DEPLOYMENT_TYPE=docker-standalone-arm64
         depends_on:
           - clickhouse
 
@@ -389,6 +389,7 @@ in
     # Create data directory structure
     systemd.tmpfiles.rules = [
       "d ${cfg.dataDir} 0755 root root -"
+      "d ${cfg.dataDir}/metrics 0755 root root -"
       "d ${cfg.dataDir}/clickhouse 0755 root root -"
       "d ${cfg.dataDir}/zookeeper-1 0755 root root -"
       "L+ ${cfg.dataDir}/prometheus.yml - - - - ${prometheusYml}"
@@ -414,7 +415,7 @@ in
       };
     };
 
-    # Simple HTTP server to expose tegrastats metrics
+    # Simple HTTP server to expose tegrastats metrics (only serves .prom files)
     systemd.services.tegrastats-http-server = mkIf cfg.enableTegrastats {
       description = "HTTP server for tegrastats Prometheus metrics";
       wantedBy = [ "multi-user.target" ];
@@ -425,12 +426,17 @@ in
         Type = "simple";
         ExecStart = ''
           ${pkgs.python3}/bin/python3 -m http.server 9101 \
-            --directory ${cfg.dataDir} \
+            --directory ${cfg.dataDir}/metrics \
             --bind localhost
         '';
-        WorkingDirectory = cfg.dataDir;
+        WorkingDirectory = "${cfg.dataDir}/metrics";
         Restart = "on-failure";
         RestartSec = "5s";
+        
+        # Security: Only serve metrics directory
+        ReadOnlyPaths = [ "${cfg.dataDir}/metrics" ];
+        ProtectSystem = "strict";
+        ProtectHome = true;
       };
     };
 
