@@ -29,15 +29,35 @@ let
       
       timestamp=$(date +%s)
       
+      # Write metric metadata (HELP and TYPE) once at the beginning of each sample
+      cat > "$METRICS_FILE.tmp" << 'EOF_METRICS'
+# HELP jetson_ram_used_mb RAM used in megabytes
+# TYPE jetson_ram_used_mb gauge
+# HELP jetson_ram_total_mb RAM total in megabytes
+# TYPE jetson_ram_total_mb gauge
+# HELP jetson_swap_used_mb SWAP used in megabytes
+# TYPE jetson_swap_used_mb gauge
+# HELP jetson_swap_total_mb SWAP total in megabytes
+# TYPE jetson_swap_total_mb gauge
+# HELP jetson_cpu_usage_percent CPU usage percentage per core
+# TYPE jetson_cpu_usage_percent gauge
+# HELP jetson_cpu_freq_mhz CPU frequency in MHz
+# TYPE jetson_cpu_freq_mhz gauge
+# HELP jetson_gpu_usage_percent GPU usage percentage
+# TYPE jetson_gpu_usage_percent gauge
+# HELP jetson_gpu_freq_mhz GPU frequency in MHz
+# TYPE jetson_gpu_freq_mhz gauge
+# HELP jetson_temperature_celsius Temperature in Celsius
+# TYPE jetson_temperature_celsius gauge
+# HELP jetson_power_mw Power consumption in milliwatts
+# TYPE jetson_power_mw gauge
+EOF_METRICS
+      
       # Extract RAM usage (MB)
       if [[ $line =~ RAM\ ([0-9]+)/([0-9]+)MB ]]; then
         ram_used=''${BASH_REMATCH[1]}
         ram_total=''${BASH_REMATCH[2]}
-        echo "# HELP jetson_ram_used_mb RAM used in megabytes" > "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_ram_used_mb gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_ram_used_mb $ram_used $timestamp" >> "$METRICS_FILE.tmp"
-        echo "# HELP jetson_ram_total_mb RAM total in megabytes" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_ram_total_mb gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_ram_total_mb $ram_total $timestamp" >> "$METRICS_FILE.tmp"
       fi
       
@@ -45,21 +65,13 @@ let
       if [[ $line =~ SWAP\ ([0-9]+)/([0-9]+)MB ]]; then
         swap_used=''${BASH_REMATCH[1]}
         swap_total=''${BASH_REMATCH[2]}
-        echo "# HELP jetson_swap_used_mb SWAP used in megabytes" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_swap_used_mb gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_swap_used_mb $swap_used $timestamp" >> "$METRICS_FILE.tmp"
-        echo "# HELP jetson_swap_total_mb SWAP total in megabytes" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_swap_total_mb gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_swap_total_mb $swap_total $timestamp" >> "$METRICS_FILE.tmp"
       fi
       
       # Extract CPU utilization per core
       if [[ $line =~ CPU\ \[([^\]]+)\] ]]; then
         cpu_data=''${BASH_REMATCH[1]}
-        echo "# HELP jetson_cpu_usage_percent CPU usage percentage per core" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_cpu_usage_percent gauge" >> "$METRICS_FILE.tmp"
-        echo "# HELP jetson_cpu_freq_mhz CPU frequency in MHz" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_cpu_freq_mhz gauge" >> "$METRICS_FILE.tmp"
         
         core_num=0
         IFS=',' read -ra CORES <<< "$cpu_data"
@@ -78,17 +90,11 @@ let
       if [[ $line =~ GR3D_FREQ\ ([0-9]+)%@([0-9]+) ]]; then
         gpu_usage=''${BASH_REMATCH[1]}
         gpu_freq=''${BASH_REMATCH[2]}
-        echo "# HELP jetson_gpu_usage_percent GPU usage percentage" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_gpu_usage_percent gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_gpu_usage_percent $gpu_usage $timestamp" >> "$METRICS_FILE.tmp"
-        echo "# HELP jetson_gpu_freq_mhz GPU frequency in MHz" >> "$METRICS_FILE.tmp"
-        echo "# TYPE jetson_gpu_freq_mhz gauge" >> "$METRICS_FILE.tmp"
         echo "jetson_gpu_freq_mhz $gpu_freq $timestamp" >> "$METRICS_FILE.tmp"
       fi
       
       # Extract temperatures (various sensors)
-      echo "# HELP jetson_temperature_celsius Temperature in Celsius" >> "$METRICS_FILE.tmp"
-      echo "# TYPE jetson_temperature_celsius gauge" >> "$METRICS_FILE.tmp"
       temp_pattern="([A-Z0-9_]+)@([0-9.-]+)C"
       while [[ $line =~ $temp_pattern ]]; do
         sensor=''${BASH_REMATCH[1]}
@@ -98,8 +104,6 @@ let
       done
       
       # Extract power consumption
-      echo "# HELP jetson_power_mw Power consumption in milliwatts" >> "$METRICS_FILE.tmp"
-      echo "# TYPE jetson_power_mw gauge" >> "$METRICS_FILE.tmp"
       if [[ $line =~ VDD_IN\ ([0-9]+)/([0-9]+) ]]; then
         power_in=''${BASH_REMATCH[1]}
         echo "jetson_power_mw{rail=\"VDD_IN\"} $power_in $timestamp" >> "$METRICS_FILE.tmp"
