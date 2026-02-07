@@ -25,9 +25,21 @@
       modules = [
         # Jetpack NixOS module (provides hardware.nvidia-jetpack options)
         jetpack.nixosModules.default
-
         # system configuration
         ./configuration.nix
+      ];
+    };
+    nixosConfigurations.nixos-static-ip = nixpkgs.lib.nixosSystem {
+      modules = [
+        jetpack.nixosModules.default
+        ./configuration.nix
+        ({ ... }: {
+          networking.useDHCP = false;
+          networking.interfaces.eth0.ipv4.addresses = [{
+            address = "192.168.0.131";
+            prefixLength = 24;
+          }];
+        })
       ];
     };
   };

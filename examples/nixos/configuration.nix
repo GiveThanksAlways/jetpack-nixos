@@ -32,6 +32,7 @@
     initialPassword = "changeme";
     openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
     ];
   };
 
