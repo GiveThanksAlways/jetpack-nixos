@@ -112,6 +112,33 @@
           ];
         }))
         supportedConfigurations;
+      # Configuration for Jetson telemetry monitoring
+      telemetry_config = {
+        imports = [
+          self.nixosModules.default
+          {
+            services.jetson-telemetry = {
+              enable = true;
+              enableTegrastats = true;
+              enableNodeExporter = true;
+            };
+            hardware.nvidia-jetpack.enable = true;
+            hardware.nvidia-jetpack.som = "orin-agx";
+            hardware.nvidia-jetpack.carrierBoard = "devkit";
+            hardware.graphics.enable = true;
+            nixpkgs.config.allowUnfree = true;
+            
+            # Basic system configuration
+            fileSystems."/".fsType = "ext4";
+            boot.loader.grub.enable = false;
+            boot.loader.systemd-boot.enable = true;
+            boot.loader.efi.canTouchEfiVariables = true;
+            
+            networking.hostName = "jetson-telemetry";
+            system.stateVersion = "25.11";
+          }
+        ];
+      };
     in
     {
       nixosConfigurations = {
@@ -132,6 +159,11 @@
         };
         installer_minimal_cross_jp7 = nixpkgs.lib.nixosSystem {
           modules = [ aarch64_cross_config installer_minimal_config jetpack7_config ];
+        };
+        
+        # Jetson telemetry monitoring configuration
+        jetson-telemetry = nixpkgs.lib.nixosSystem {
+          modules = [ aarch64_config telemetry_config ];
         };
       }
       // supportedNixOSConfigurations;
