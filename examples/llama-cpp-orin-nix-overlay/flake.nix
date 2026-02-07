@@ -34,14 +34,13 @@
           ];
 
           shellHook = ''
-            echo "╔══════════════════════════════════════════════════════════╗"
-            echo "║   llama.cpp Advanced Shell for Orin AGX                  ║"
-            echo "╚══════════════════════════════════════════════════════════╝"
             echo ""
-            echo "Quick commands:"
-            echo "  qwen3-coder           Start Qwen3-Coder-Next Q5_K_XL chat"
+            echo "llama.cpp overlay shell for Orin AGX"
+            echo ""
+            echo "Commands:"
+            echo "  qwen3-coder           Chat with Qwen3-Coder-Next (Q5_K_XL)"
             echo "  qwen3-coder Q4_K_M    Use smaller quant (~35GB)"
-            echo "  qwen3-server          Start API server on :8080"
+            echo "  qwen3-server          API server on :8080"
             echo "  llama-benchmark       Run performance benchmark"
             echo ""
             echo "Raw llama.cpp:"

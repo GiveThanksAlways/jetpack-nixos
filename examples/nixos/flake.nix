@@ -1,13 +1,5 @@
 # Flake configuration for Jetson AGX Orin Developer Kit
 #
-# Copy this file to /mnt/etc/nixos/flake.nix during installation.
-# Then run: nixos-install --flake /mnt/etc/nixos#jetson
-#
-# Post-install updates:
-#   cd /etc/nixos
-#   sudo nix flake update
-#   sudo nixos-rebuild switch --flake .#jetson
-#
 # Available configurations (pick one):
 #
 #   nixos-rebuild switch --flake .#nixos                Base system (DHCP)
@@ -15,6 +7,7 @@
 #   nixos-rebuild switch --flake .#nixos-perf           Base + performance tuning (MAXN, clocks, hugepages)
 #   nixos-rebuild switch --flake .#nixos-llama-cpp      Base + perf + llama.cpp server
 #   nixos-rebuild switch --flake .#nixos-tabby-api      Base + perf + TabbyAPI server
+#   nixos-rebuild switch --flake .#nixos-telemetry      Base + Grafana/Prometheus GPU telemetry
 
 {
   description = "NixOS configuration for Jetson AGX Orin";
@@ -37,12 +30,12 @@
       ];
     in
     {
-      # ── Base: plain DHCP networking ──
+      # -- Base: plain DHCP networking --
       nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
         modules = baseModules;
       };
 
-      # ── Static IP on eth0 ──
+      # -- Static IP on eth0 --
       nixosConfigurations.nixos-static-ip = nixpkgs.lib.nixosSystem {
         modules = baseModules ++ [
           ({ ... }: {
@@ -55,7 +48,7 @@
         ];
       };
 
-      # ── Performance tuning (MAXN, locked clocks, hugepages, zram) ──
+      # -- Performance tuning (MAXN, locked clocks, hugepages, zram) --
       nixosConfigurations.nixos-perf = nixpkgs.lib.nixosSystem {
         modules = baseModules ++ [
           ./modules/performance.nix
@@ -65,7 +58,7 @@
         ];
       };
 
-      # ── llama.cpp server + performance tuning ──
+      # -- llama.cpp server + performance tuning --
       nixosConfigurations.nixos-llama-cpp = nixpkgs.lib.nixosSystem {
         modules = baseModules ++ [
           ./modules/performance.nix
@@ -90,7 +83,7 @@
         ];
       };
 
-      # ── TabbyAPI server + performance tuning ──
+      # -- TabbyAPI server + performance tuning --
       nixosConfigurations.nixos-tabby-api = nixpkgs.lib.nixosSystem {
         modules = baseModules ++ [
           ./modules/performance.nix
@@ -103,6 +96,19 @@
               modelName = "Qwen3-Coder-Next-Q4_K_M.gguf";
               maxSeqLen = 4096;
               cacheMode = "Q4";
+            };
+          })
+        ];
+      };
+
+      # -- Telemetry (Grafana + Prometheus + tegrastats) --
+      nixosConfigurations.nixos-telemetry = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ({ ... }: {
+            services.jetson-telemetry = {
+              enable = true;
+              enableTegrastats = true;
+              enableNodeExporter = true;
             };
           })
         ];

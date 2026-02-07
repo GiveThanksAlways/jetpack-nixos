@@ -1,25 +1,25 @@
 # vLLM on Jetson Orin AGX
 
-Standalone flake for running [vLLM](https://github.com/vllm-project/vllm) on
-Jetson Orin AGX with CUDA support.
+Dev shell and NixOS module for [vLLM](https://github.com/vllm-project/vllm)
+on Jetson Orin AGX with CUDA support.
 
-## Dev Shell
+## Dev shell
 
 ```bash
-nix develop .
+nix develop
 vllm serve <model>
 ```
 
-## NixOS Module
+## NixOS module
 
-This flake exports a NixOS module at `nixosModules.default`.  Import it from
-your main system flake to get `services.vllm-serving`:
+This flake exports `nixosModules.default` providing `services.vllm-serving`.
+Import it from your system flake:
 
 ```nix
-# In your system flake.nix inputs:
-vllm.url = "path:../vLLM";   # or point at a remote repo
+# flake.nix inputs:
+vllm.url = "path:../vLLM";
 
-# In modules:
+# modules:
 modules = [
   vllm.nixosModules.default
   ({ ... }: {
@@ -37,17 +37,15 @@ modules = [
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `enable` | bool | `false` | Enable vLLM serving |
-| `model` | string | — | Path to GGUF or HuggingFace model ID |
-| `tokenizer` | string | `""` | HuggingFace tokenizer (needed for GGUF) |
-| `host` | string | `"0.0.0.0"` | Bind address |
-| `port` | port | `8000` | API port |
-| `gpuMemoryUtilization` | float | `0.90` | GPU memory fraction |
-| `maxModelLen` | int | `4096` | Max sequence length |
-| `quantization` | string | `null` | Quantization method (gguf, awq, gptq) |
-| `extraArgs` | list | `[]` | Extra CLI flags |
-| `environment` | attrs | `{}` | Extra env vars |
+| Option | Default | Description |
+|---|---|---|
+| `model` | -- | Path to GGUF model or HuggingFace ID |
+| `tokenizer` | `""` | HuggingFace tokenizer (needed for GGUF) |
+| `port` | `8000` | API port |
+| `gpuMemoryUtilization` | `0.90` | GPU memory fraction |
+| `maxModelLen` | `4096` | Max sequence length |
+| `quantization` | `null` | Quantization method (gguf, awq, gptq) |
+| `extraArgs` | `[]` | Extra CLI flags |
+| `environment` | `{}` | Extra env vars |
 
-The API is OpenAI-compatible at `http://<host>:<port>/v1`.
+API endpoint: `http://<host>:<port>/v1`

@@ -1,5 +1,5 @@
 {
-  description = "vLLM for Jetson Orin AGX — dev shell & standalone NixOS module";
+  description = "vLLM for Jetson Orin AGX - dev shell and standalone NixOS module";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
@@ -12,7 +12,7 @@
 
   outputs = { self, nixpkgs, jetpack-nixos, flake-utils }:
     let
-      # ── NixOS module: services.vllm-serving ──
+      # -- NixOS module: services.vllm-serving --
       #
       # Import this from your main NixOS flake:
       #   modules = [ vllm-flake.nixosModules.default ];
