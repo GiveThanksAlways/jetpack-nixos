@@ -112,16 +112,15 @@
           ];
         }))
         supportedConfigurations;
-      # Configuration for SigNoz telemetry
-      signoz_config = {
+      # Configuration for Jetson telemetry monitoring
+      telemetry_config = {
         imports = [
           self.nixosModules.default
           {
-            services.signoz-telemetry = {
+            services.jetson-telemetry = {
               enable = true;
               enableTegrastats = true;
               enableNodeExporter = true;
-              enableNvidiaSmi = true;
             };
             hardware.nvidia-jetpack.enable = true;
             hardware.nvidia-jetpack.som = "orin-agx";
@@ -135,7 +134,7 @@
             boot.loader.systemd-boot.enable = true;
             boot.loader.efi.canTouchEfiVariables = true;
             
-            networking.hostName = "jetson-signoz";
+            networking.hostName = "jetson-telemetry";
             system.stateVersion = "25.11";
           }
         ];
@@ -162,9 +161,9 @@
           modules = [ aarch64_cross_config installer_minimal_config jetpack7_config ];
         };
         
-        # SigNoz telemetry configuration
-        signoz = nixpkgs.lib.nixosSystem {
-          modules = [ aarch64_config signoz_config ];
+        # Jetson telemetry monitoring configuration
+        jetson-telemetry = nixpkgs.lib.nixosSystem {
+          modules = [ aarch64_config telemetry_config ];
         };
       }
       // supportedNixOSConfigurations;

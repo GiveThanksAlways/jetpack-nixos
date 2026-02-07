@@ -39,7 +39,7 @@ in
     ./nvidia-container-toolkit.nix
     ./nvpmodel.nix
     ./optee.nix
-    ./signoz-telemetry.nix
+    ./jetson-telemetry.nix
   ];
 
   options = {

@@ -17,14 +17,14 @@
 
 {
   # Enable native NixOS telemetry stack
-  services.signoz-telemetry = {
+  services.jetson-telemetry = {
     enable = true;
     
     # Grafana WebUI port
     port = 3301;
     
     # Data directory
-    dataDir = "/var/lib/signoz-telemetry";
+    dataDir = "/var/lib/jetson-telemetry";
     
     # Enable fine-grained GPU telemetry (500ms sampling)
     enableTegrastats = true;

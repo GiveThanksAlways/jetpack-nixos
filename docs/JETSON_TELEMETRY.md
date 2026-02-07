@@ -24,7 +24,7 @@ See [SETUP.md](SETUP.md) for complete guide.
 ## Configuration
 
 ```nix
-services.signoz-telemetry = {
+services.jetson-telemetry = {
   enable = true;
   enableTegrastats = true;      # GPU metrics
   enableNodeExporter = true;     # System metrics

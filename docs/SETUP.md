@@ -7,7 +7,7 @@ All services run as native NixOS systemd services.
 ### Quick Start
 ```bash
 git pull
-sudo nixos-rebuild switch --flake .#signoz
+sudo nixos-rebuild switch --flake .#jetson-telemetry
 ```
 
 **Grafana UI**: http://<jetson-ip>:3301
@@ -47,7 +47,7 @@ sudo systemctl status grafana prometheus
 sudo journalctl -u grafana -f
 
 # Check metrics
-cat /var/lib/signoz-telemetry/metrics/tegrastats-metrics.prom
+cat /var/lib/jetson-telemetry-telemetry/metrics/tegrastats-metrics.prom
 ```
 
 ## Why Native NixOS?

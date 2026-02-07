@@ -6,7 +6,7 @@ This implementation has been completely rewritten to use pure NixOS services ins
 
 ### Removed (Docker-Based)
 - ❌ Docker & Docker Compose
-- ❌ SigNoz containers (ClickHouse, Query Service, Frontend, OTel Collector)
+- ❌ Jetson Telemetry containers (ClickHouse, Query Service, Frontend, OTel Collector)
 - ❌ Zookeeper
 - ❌ virtualisation.docker requirement
 
@@ -36,7 +36,7 @@ This implementation has been completely rewritten to use pure NixOS services ins
 ## Configuration Unchanged
 
 ```nix
-services.signoz-telemetry = {
+services.jetson-telemetry = {
   enable = true;
   enableTegrastats = true;      # 500ms GPU metrics
   enableNodeExporter = true;     # System metrics
@@ -82,6 +82,6 @@ Old Docker containers will be stopped. New systemd services start instantly.
 ## For Docker Version
 
 If you need the Docker version, it's preserved in:
-- `modules/signoz-telemetry.nix.docker-backup`
+- `modules/jetson-telemetry.nix.docker-backup`
 
 But we recommend the pure NixOS approach!

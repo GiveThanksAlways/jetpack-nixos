@@ -255,12 +255,12 @@ Pure NixOS telemetry stack provides fine-grained GPU monitoring with zero Docker
 
 **Quick Start:**
 ```bash
-sudo nixos-rebuild switch --flake github:anduril/jetpack-nixos#signoz
+sudo nixos-rebuild switch --flake github:anduril/jetpack-nixos#jetson-telemetry
 ```
 
 Or add to your configuration:
 ```nix
-services.signoz-telemetry = {
+services.jetson-telemetry = {
   enable = true;
   enableTegrastats = true;      # Fine-grained GPU metrics (500ms)
   enableNodeExporter = true;     # System metrics
