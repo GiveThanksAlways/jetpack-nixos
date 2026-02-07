@@ -56,7 +56,10 @@ in
             }.${cfg.powerMode};
           in
           pkgs.writeShellScript "set-power-mode" ''
-            ${pkgs.nvidia-jetpack.nvpmodel or "/usr/sbin/nvpmodel"} -m ${modeId} || true
+            # nvpmodel and jetson_clocks are provided by the JetPack system.
+            # They live in /usr/sbin on the Jetson; adjust PATH if needed.
+            export PATH="/usr/sbin:/usr/bin:$PATH"
+            nvpmodel -m ${modeId} || true
             ${lib.optionalString cfg.lockClocks ''
               sleep 2
               jetson_clocks || true

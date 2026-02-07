@@ -69,9 +69,10 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = pkgs.llama-cpp or pkgs.llamaCpp or (
-        throw "llama-cpp package not found. Add it to your overlay or pkgs."
-      );
+      default =
+        if pkgs ? llama-cpp then pkgs.llama-cpp
+        else if pkgs ? llamaCpp then pkgs.llamaCpp
+        else throw "llama-cpp package not found. Add it to your overlay or install via nixpkgs.";
       description = "llama.cpp package to use (must include llama-server).";
     };
   };

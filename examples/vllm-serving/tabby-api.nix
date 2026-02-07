@@ -57,8 +57,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # TabbyAPI config file
-    environment.etc."tabby-api/config.yml".text = builtins.toJSON ({
+    # TabbyAPI config file (JSON is valid YAML, and TabbyAPI accepts both)
+    environment.etc."tabby-api/config.json".text = builtins.toJSON ({
       model = {
         model_dir = cfg.modelDir;
         model_name = cfg.modelName;
@@ -92,19 +92,18 @@ in
         StateDirectory = "tabby-api";
         WorkingDirectory = "/var/lib/tabby-api";
 
-        # TabbyAPI is a Python project — fetch and run it
+        # TabbyAPI is a Python project — clone once at setup
         ExecStartPre = pkgs.writeShellScript "tabby-api-setup" ''
           if [ ! -d /var/lib/tabby-api/repo ]; then
             ${pkgs.git}/bin/git clone --depth 1 ${cfg.src} /var/lib/tabby-api/repo
           fi
           cd /var/lib/tabby-api/repo
           ${pkgs.git}/bin/git pull --ff-only || true
-          ${pkgs.python3}/bin/python -m pip install --user -r requirements.txt 2>/dev/null || true
         '';
 
         ExecStart = ''
           ${pkgs.python3}/bin/python /var/lib/tabby-api/repo/main.py \
-            --config /etc/tabby-api/config.yml
+            --config /etc/tabby-api/config.json
         '';
       };
     };

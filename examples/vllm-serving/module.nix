@@ -60,7 +60,7 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.python3Packages.vllm or pkgs.python3.pkgs.vllm or (
-        pkgs.python3.withPackages (ps: [ ])
+        throw "vLLM package not found in nixpkgs. Install vllm via pip in a Python env or add it to your overlay."
       );
       description = "vLLM package to use.";
     };
