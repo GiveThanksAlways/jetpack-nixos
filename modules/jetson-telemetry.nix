@@ -485,23 +485,36 @@ in
       9101          # Tegrastats HTTP server
     ];
 
-    # Informational message
+    # Informational message with modern styling
     system.activationScripts.jetson-telemetry-info = lib.mkIf cfg.enable ''
       echo ""
-      echo "=========================================="
-      echo "Native NixOS Telemetry Stack Enabled"
-      echo "=========================================="
-      echo "Grafana UI: http://localhost:${toString cfg.port}"
-      echo "Prometheus: http://localhost:9090"
+      echo "╔════════════════════════════════════════════════════════════╗"
+      echo "║                                                            ║"
+      echo "║    🚀 JETSON TELEMETRY STACK - PRODUCTION READY 🚀        ║"
+      echo "║                                                            ║"
+      echo "╚════════════════════════════════════════════════════════════╝"
       echo ""
-      echo "Pure NixOS implementation - No Docker!"
+      echo "  📊 Grafana WebUI:    http://localhost:${toString cfg.port}"
+      echo "  📈 Prometheus API:   http://localhost:9090"
       echo ""
-      echo "Collecting fine-grained metrics:"
-      echo "  - Tegrastats (500ms GPU sampling)"
-      echo "  - Node Exporter (System metrics)"
+      echo "  ✨ FEATURES:"
+      echo "     • Pure NixOS implementation (Zero Docker!)"
+      echo "     • Fine-grained GPU telemetry (500ms sampling)"
+      echo "     • Auto-provisioned GPU dashboard"
+      echo "     • Modern Grafana visualizations"
       echo ""
-      echo "GPU Dashboard auto-provisioned!"
-      echo "=========================================="
+      echo "  🎯 METRICS COLLECTED:"
+      echo "     • GPU: Usage, Frequency, EMC, VIC, APE"
+      echo "     • CPU: Per-core usage & frequency (12 cores)"
+      echo "     • Memory: RAM, SWAP monitoring"
+      echo "     • Temperature: All thermal sensors"
+      echo "     • Power: All power rails (mW precision)"
+      echo ""
+      echo "  🎨 Dashboard: Dashboards → Jetson → GPU Telemetry"
+      echo ""
+      echo "╔════════════════════════════════════════════════════════════╗"
+      echo "║  Ready to monitor your Jetson Orin AGX dev kit!           ║"
+      echo "╚════════════════════════════════════════════════════════════╝"
       echo ""
     '';
   };
