@@ -71,7 +71,7 @@
 
             if ! python3 -c "import tinygrad" 2>/dev/null; then
               echo "Installing tinygrad (editable)..."
-              pip install -e ./tinygrad 2>/dev/null
+              pip install -e ./tinygrad
             fi
 
             echo ""

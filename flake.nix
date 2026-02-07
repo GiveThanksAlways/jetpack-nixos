@@ -121,7 +121,7 @@
               enable = true;
               enableTegrastats = true;
               enableNodeExporter = true;
-              enableOpenTelemetry = true;
+              # enableOpenTelemetry = true;  # opt-in: adds OTLP collector on ports 4317/4318/8889
             };
             hardware.nvidia-jetpack.enable = true;
             hardware.nvidia-jetpack.som = "orin-agx";
