@@ -1,3 +1,13 @@
+# llama-cpp-server.nix — NixOS module for llama.cpp server on Jetson Orin
+#
+# Lowest overhead GGUF-native serving with an OpenAI-compatible API.
+#
+#   imports = [ ./modules/llama-cpp-server.nix ];
+#   services.llama-cpp-server = {
+#     enable = true;
+#     model  = "/models/my-model.gguf";
+#   };
+
 { config, lib, pkgs, ... }:
 
 let

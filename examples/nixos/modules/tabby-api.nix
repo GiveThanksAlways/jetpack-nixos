@@ -1,3 +1,15 @@
+# tabby-api.nix — NixOS module for TabbyAPI on Jetson Orin
+#
+# ExLlamaV2-based OpenAI-compatible server, great for IDE / OpenCode
+# code completion workloads.
+#
+#   imports = [ ./modules/tabby-api.nix ];
+#   services.tabby-api = {
+#     enable    = true;
+#     modelDir  = "/models";
+#     modelName = "Qwen3-Coder-Next-Q4_K_M.gguf";
+#   };
+
 { config, lib, pkgs, ... }:
 
 let
@@ -57,7 +69,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    # TabbyAPI config file (JSON is valid YAML, and TabbyAPI accepts both)
     environment.etc."tabby-api/config.json".text = builtins.toJSON ({
       model = {
         model_dir = cfg.modelDir;
@@ -92,7 +103,6 @@ in
         StateDirectory = "tabby-api";
         WorkingDirectory = "/var/lib/tabby-api";
 
-        # TabbyAPI is a Python project — clone once at setup
         ExecStartPre = pkgs.writeShellScript "tabby-api-setup" ''
           if [ ! -d /var/lib/tabby-api/repo ]; then
             ${pkgs.git}/bin/git clone --depth 1 ${cfg.src} /var/lib/tabby-api/repo

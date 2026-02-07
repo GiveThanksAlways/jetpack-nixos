@@ -7,6 +7,14 @@
 #   cd /etc/nixos
 #   sudo nix flake update
 #   sudo nixos-rebuild switch --flake .#jetson
+#
+# Available configurations (pick one):
+#
+#   nixos-rebuild switch --flake .#nixos                Base system (DHCP)
+#   nixos-rebuild switch --flake .#nixos-static-ip      Static IP on eth0
+#   nixos-rebuild switch --flake .#nixos-perf           Base + performance tuning (MAXN, clocks, hugepages)
+#   nixos-rebuild switch --flake .#nixos-llama-cpp      Base + perf + llama.cpp server
+#   nixos-rebuild switch --flake .#nixos-tabby-api      Base + perf + TabbyAPI server
 
 {
   description = "NixOS configuration for Jetson AGX Orin";
@@ -20,27 +28,84 @@
     jetpack.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, jetpack, ... }: {
-    nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
-      modules = [
-        # Jetpack NixOS module (provides hardware.nvidia-jetpack options)
-        jetpack.nixosModules.default
-        # system configuration
-        ./configuration.nix
-      ];
-    };
-    nixosConfigurations.nixos-static-ip = nixpkgs.lib.nixosSystem {
-      modules = [
+  outputs = { self, nixpkgs, jetpack, ... }:
+    let
+      # Shared base modules — every config gets these
+      baseModules = [
         jetpack.nixosModules.default
         ./configuration.nix
-        ({ ... }: {
-          networking.useDHCP = false;
-          networking.interfaces.eth0.ipv4.addresses = [{
-            address = "192.168.0.131";
-            prefixLength = 24;
-          }];
-        })
       ];
+    in
+    {
+      # ── Base: plain DHCP networking ──
+      nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
+        modules = baseModules;
+      };
+
+      # ── Static IP on eth0 ──
+      nixosConfigurations.nixos-static-ip = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ({ ... }: {
+            networking.useDHCP = false;
+            networking.interfaces.eth0.ipv4.addresses = [{
+              address = "192.168.0.131";
+              prefixLength = 24;
+            }];
+          })
+        ];
+      };
+
+      # ── Performance tuning (MAXN, locked clocks, hugepages, zram) ──
+      nixosConfigurations.nixos-perf = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ./modules/performance.nix
+          ({ ... }: {
+            services.orin-perf.enable = true;
+          })
+        ];
+      };
+
+      # ── llama.cpp server + performance tuning ──
+      nixosConfigurations.nixos-llama-cpp = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ./modules/performance.nix
+          ./modules/llama-cpp-server.nix
+          ({ ... }: {
+            services.orin-perf.enable = true;
+            services.llama-cpp-server = {
+              enable = true;
+              model = "/models/Qwen3-Coder-Next-Q4_K_M.gguf";
+              nGpuLayers = 99;
+              contextSize = 4096;
+              threads = 8;
+              batchSize = 512;
+              flashAttn = true;
+              useMmap = true;
+              extraArgs = [
+                "--cont-batching"
+                "--parallel" "2"
+              ];
+            };
+          })
+        ];
+      };
+
+      # ── TabbyAPI server + performance tuning ──
+      nixosConfigurations.nixos-tabby-api = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ./modules/performance.nix
+          ./modules/tabby-api.nix
+          ({ ... }: {
+            services.orin-perf.enable = true;
+            services.tabby-api = {
+              enable = true;
+              modelDir = "/models";
+              modelName = "Qwen3-Coder-Next-Q4_K_M.gguf";
+              maxSeqLen = 4096;
+              cacheMode = "Q4";
+            };
+          })
+        ];
+      };
     };
-  };
 }
