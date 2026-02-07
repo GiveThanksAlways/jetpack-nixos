@@ -104,6 +104,7 @@
       # -- Telemetry (Grafana + Prometheus + tegrastats) --
       nixosConfigurations.nixos-telemetry = nixpkgs.lib.nixosSystem {
         modules = baseModules ++ [
+          ./modules/telemetry.nix
           ({ ... }: {
             services.jetson-telemetry = {
               enable = true;

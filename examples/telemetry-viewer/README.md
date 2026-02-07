@@ -4,10 +4,18 @@ View Jetson GPU/system dashboards in Chrome on your local machine.
 
 ## On the Jetson (one-time)
 
-Enable telemetry in your NixOS config:
+Build with the telemetry configuration from `examples/nixos`:
+
+```bash
+sudo nixos-rebuild switch --flake ./examples/nixos#nixos-telemetry
+```
+
+Or add the module to your own config:
 
 ```nix
-# configuration.nix (or flake module)
+# import the telemetry module
+imports = [ ./modules/telemetry.nix ];
+
 services.jetson-telemetry = {
   enable = true;
   # enableOpenTelemetry = true;  # optional: adds OTLP collector
@@ -33,7 +41,7 @@ Open Chrome: `http://localhost:3301`
 
 Navigate: Dashboards -> Jetson -> Jetson Mission Control
 
-## What you see
+## Dashboard panels
 
 - GPU load gauge + utilization over time
 - GPU frequency
@@ -44,10 +52,10 @@ Navigate: Dashboards -> Jetson -> Jetson Mission Control
 - EMC (memory controller) load gauge
 - VIC / APE engine stats
 
-## Toggle telemetry off (for max performance)
+## Disable telemetry
 
 ```nix
 services.jetson-telemetry.enable = false;
 ```
 
-Rebuild and all telemetry services stop. Zero overhead.
+Rebuild. All telemetry services stop. Zero overhead.
