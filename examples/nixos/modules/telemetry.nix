@@ -48,6 +48,12 @@ in
       default = "30d";
       description = "Prometheus data retention period.";
     };
+
+    enableOpenTelemetry = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enable OpenTelemetry collector (OTLP -> Prometheus).";
+    };
   };
 
   # Note: the actual implementation lives in the top-level

@@ -121,6 +121,7 @@
               enable = true;
               enableTegrastats = true;
               enableNodeExporter = true;
+              enableOpenTelemetry = true;
             };
             hardware.nvidia-jetpack.enable = true;
             hardware.nvidia-jetpack.som = "orin-agx";

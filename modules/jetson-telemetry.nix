@@ -149,22 +149,47 @@ EOF_METRICS
     done
   '';
 
-  # Grafana dashboard for Jetson GPU telemetry
+  # Grafana dashboard for Jetson GPU telemetry -- "mission control" style
   gpuDashboard = pkgs.writeText "jetson-gpu-dashboard.json" (builtins.toJSON {
-    title = "Jetson GPU Telemetry";
-    tags = ["jetson" "nvidia" "gpu"];
+    title = "Jetson Mission Control";
+    tags = ["jetson" "nvidia" "gpu" "telemetry"];
     timezone = "browser";
-    refresh = "5s";
+    refresh = "2s";
     time = {
       from = "now-5m";
       to = "now";
     };
+    style = "dark";
     panels = [
+      # -- Row 0: GPU gauges + live frequency ---------------------------------
       {
         id = 1;
+        title = "GPU Load";
+        type = "gauge";
+        gridPos = { h = 8; w = 6; x = 0; y = 0; };
+        targets = [{
+          expr = "jetson_gpu_usage_percent";
+          legendFormat = "GPU %";
+        }];
+        fieldConfig.defaults = {
+          unit = "percent";
+          min = 0;
+          max = 100;
+          thresholds = {
+            mode = "absolute";
+            steps = [
+              { value = null; color = "green"; }
+              { value = 60; color = "yellow"; }
+              { value = 85; color = "red"; }
+            ];
+          };
+        };
+      }
+      {
+        id = 2;
         title = "GPU Utilization";
         type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 0; };
+        gridPos = { h = 8; w = 10; x = 6; y = 0; };
         targets = [{
           expr = "jetson_gpu_usage_percent";
           legendFormat = "GPU Usage %";
@@ -173,25 +198,32 @@ EOF_METRICS
           unit = "percent";
           min = 0;
           max = 100;
-          custom.fillOpacity = 10;
+          custom.fillOpacity = 20;
+          custom.lineWidth = 2;
+          custom.gradientMode = "scheme";
         };
       }
       {
-        id = 2;
+        id = 3;
         title = "GPU Frequency";
         type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 12; y = 0; };
+        gridPos = { h = 8; w = 8; x = 16; y = 0; };
         targets = [{
           expr = "jetson_gpu_freq_mhz";
           legendFormat = "GPU Freq (MHz)";
         }];
-        fieldConfig.defaults.unit = "MHz";
+        fieldConfig.defaults = {
+          unit = "MHz";
+          custom.fillOpacity = 10;
+          custom.lineWidth = 2;
+        };
       }
+      # -- Row 1: CPU per-core + memory gauge ---------------------------------
       {
-        id = 3;
+        id = 4;
         title = "CPU Usage by Core";
         type = "timeseries";
-        gridPos = { h = 8; w = 24; x = 0; y = 8; };
+        gridPos = { h = 8; w = 16; x = 0; y = 8; };
         targets = [{
           expr = "jetson_cpu_usage_percent";
           legendFormat = "Core {{core}}";
@@ -200,36 +232,57 @@ EOF_METRICS
           unit = "percent";
           min = 0;
           max = 100;
+          custom.fillOpacity = 15;
+          custom.lineWidth = 1;
         };
       }
       {
-        id = 4;
-        title = "Memory Usage";
+        id = 5;
+        title = "RAM Used";
+        type = "gauge";
+        gridPos = { h = 8; w = 4; x = 16; y = 8; };
+        targets = [{
+          expr = "jetson_ram_used_mb / jetson_ram_total_mb * 100";
+          legendFormat = "RAM %";
+        }];
+        fieldConfig.defaults = {
+          unit = "percent";
+          min = 0;
+          max = 100;
+          thresholds = {
+            mode = "absolute";
+            steps = [
+              { value = null; color = "green"; }
+              { value = 70; color = "yellow"; }
+              { value = 90; color = "red"; }
+            ];
+          };
+        };
+      }
+      {
+        id = 6;
+        title = "Memory (MB)";
         type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 16; };
+        gridPos = { h = 8; w = 4; x = 20; y = 8; };
         targets = [
-          {
-            expr = "jetson_ram_used_mb";
-            legendFormat = "RAM Used (MB)";
-          }
-          {
-            expr = "jetson_swap_used_mb";
-            legendFormat = "SWAP Used (MB)";
-          }
+          { expr = "jetson_ram_used_mb"; legendFormat = "RAM"; }
+          { expr = "jetson_swap_used_mb"; legendFormat = "SWAP"; }
         ];
         fieldConfig.defaults.unit = "mbytes";
       }
+      # -- Row 2: Thermals + Power -------------------------------------------
       {
-        id = 5;
+        id = 7;
         title = "Temperatures";
         type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 12; y = 16; };
+        gridPos = { h = 8; w = 12; x = 0; y = 16; };
         targets = [{
           expr = "jetson_temperature_celsius";
           legendFormat = "{{sensor}}";
         }];
         fieldConfig.defaults = {
           unit = "celsius";
+          custom.fillOpacity = 5;
           thresholds = {
             mode = "absolute";
             steps = [
@@ -241,46 +294,86 @@ EOF_METRICS
         };
       }
       {
-        id = 6;
+        id = 8;
         title = "Power Consumption";
         type = "timeseries";
-        gridPos = { h = 8; w = 24; x = 0; y = 24; };
+        gridPos = { h = 8; w = 12; x = 12; y = 16; };
         targets = [{
           expr = "jetson_power_mw";
           legendFormat = "{{rail}}";
         }];
-        fieldConfig.defaults.unit = "mwatt";
+        fieldConfig.defaults = {
+          unit = "mwatt";
+          custom.fillOpacity = 15;
+          custom.gradientMode = "scheme";
+        };
       }
+      # -- Row 3: EMC + engine stats -----------------------------------------
       {
-        id = 7;
-        title = "Memory Controller Load";
-        type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 32; };
+        id = 9;
+        title = "EMC Load";
+        type = "gauge";
+        gridPos = { h = 8; w = 6; x = 0; y = 24; };
         targets = [{
           expr = "jetson_emc_freq_percent";
-          legendFormat = "EMC Load %";
+          legendFormat = "EMC %";
         }];
         fieldConfig.defaults = {
           unit = "percent";
           min = 0;
           max = 100;
+          thresholds = {
+            mode = "absolute";
+            steps = [
+              { value = null; color = "green"; }
+              { value = 60; color = "yellow"; }
+              { value = 85; color = "red"; }
+            ];
+          };
         };
       }
       {
-        id = 8;
-        title = "Video & Audio Engines";
+        id = 10;
+        title = "Memory Controller";
+        type = "timeseries";
+        gridPos = { h = 8; w = 6; x = 6; y = 24; };
+        targets = [{
+          expr = "jetson_emc_freq_mhz";
+          legendFormat = "EMC MHz";
+        }];
+        fieldConfig.defaults.unit = "MHz";
+      }
+      {
+        id = 11;
+        title = "VIC Freq";
         type = "stat";
-        gridPos = { h = 8; w = 12; x = 12; y = 32; };
-        targets = [
-          {
-            expr = "jetson_vic_freq";
-            legendFormat = "VIC";
-          }
-          {
-            expr = "jetson_ape_freq";
-            legendFormat = "APE";
-          }
-        ];
+        gridPos = { h = 8; w = 6; x = 12; y = 24; };
+        targets = [{
+          expr = "jetson_vic_freq";
+          legendFormat = "VIC";
+        }];
+        fieldConfig.defaults.thresholds = {
+          mode = "absolute";
+          steps = [
+            { value = null; color = "blue"; }
+          ];
+        };
+      }
+      {
+        id = 12;
+        title = "APE Freq";
+        type = "stat";
+        gridPos = { h = 8; w = 6; x = 18; y = 24; };
+        targets = [{
+          expr = "jetson_ape_freq";
+          legendFormat = "APE";
+        }];
+        fieldConfig.defaults.thresholds = {
+          mode = "absolute";
+          steps = [
+            { value = null; color = "purple"; }
+          ];
+        };
       }
     ];
   });
@@ -319,6 +412,12 @@ in
         type = types.str;
         default = "30d";
         description = "Prometheus metrics retention time";
+      };
+
+      enableOpenTelemetry = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable OpenTelemetry collector to receive OTLP traces/metrics and forward to Prometheus";
       };
     };
   };
@@ -429,8 +528,53 @@ in
             };
           }];
         }
+      ]
+      ++ lib.optionals cfg.enableOpenTelemetry [
+        {
+          job_name = "otel-collector";
+          scrape_interval = "5s";
+          static_configs = [{
+            targets = [ "localhost:8889" ];
+            labels = {
+              device = "jetson-orin-agx";
+              source = "opentelemetry";
+            };
+          }];
+        }
       ];
     };
+
+    # OpenTelemetry Collector -- receives OTLP, exports to Prometheus
+    systemd.services.otel-collector = mkIf cfg.enableOpenTelemetry (let
+      otelConfig = pkgs.writeText "otel-config.yaml" ''
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: "0.0.0.0:4317"
+              http:
+                endpoint: "0.0.0.0:4318"
+        exporters:
+          prometheus:
+            endpoint: "0.0.0.0:8889"
+            namespace: "otel"
+        service:
+          pipelines:
+            metrics:
+              receivers: [otlp]
+              exporters: [prometheus]
+      '';
+    in {
+      description = "OpenTelemetry Collector";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcontribcol --config=${otelConfig}";
+        Restart = "on-failure";
+        RestartSec = "5s";
+      };
+    });
 
     # Grafana for visualization
     services.grafana = {
@@ -476,6 +620,7 @@ in
           }];
         };
       };
+    };
 
     # Open firewall ports
     networking.firewall.allowedTCPPorts = [
@@ -483,38 +628,24 @@ in
       9090          # Prometheus
       9100          # Node Exporter
       9101          # Tegrastats HTTP server
+    ]
+    ++ lib.optionals cfg.enableOpenTelemetry [
+      4317          # OTLP gRPC
+      4318          # OTLP HTTP
+      8889          # OTel Prometheus exporter
     ];
 
-    # Informational message with modern styling
+    # Informational message
     system.activationScripts.jetson-telemetry-info = lib.mkIf cfg.enable ''
       echo ""
-      echo "╔════════════════════════════════════════════════════════════╗"
-      echo "║                                                            ║"
-      echo "║    🚀 JETSON TELEMETRY STACK - PRODUCTION READY 🚀        ║"
-      echo "║                                                            ║"
-      echo "╚════════════════════════════════════════════════════════════╝"
+      echo "=== JETSON TELEMETRY ACTIVE ==="
       echo ""
-      echo "  📊 Grafana WebUI:    http://localhost:${toString cfg.port}"
-      echo "  📈 Prometheus API:   http://localhost:9090"
+      echo "  Grafana:    http://localhost:${toString cfg.port}"
+      echo "  Prometheus: http://localhost:9090"
       echo ""
-      echo "  ✨ FEATURES:"
-      echo "     • Pure NixOS implementation (Zero Docker!)"
-      echo "     • Fine-grained GPU telemetry (500ms sampling)"
-      echo "     • Auto-provisioned GPU dashboard"
-      echo "     • Modern Grafana visualizations"
-      echo ""
-      echo "  🎯 METRICS COLLECTED:"
-      echo "     • GPU: Usage, Frequency, EMC, VIC, APE"
-      echo "     • CPU: Per-core usage & frequency (12 cores)"
-      echo "     • Memory: RAM, SWAP monitoring"
-      echo "     • Temperature: All thermal sensors"
-      echo "     • Power: All power rails (mW precision)"
-      echo ""
-      echo "  🎨 Dashboard: Dashboards → Jetson → GPU Telemetry"
-      echo ""
-      echo "╔════════════════════════════════════════════════════════════╗"
-      echo "║  Ready to monitor your Jetson Orin AGX dev kit!           ║"
-      echo "╚════════════════════════════════════════════════════════════╝"
+      echo "  From your PC:"
+      echo "    ssh -L ${toString cfg.port}:localhost:${toString cfg.port} -L 9090:localhost:9090 user@<jetson-ip>"
+      echo "    then open http://localhost:${toString cfg.port} in Chrome"
       echo ""
     '';
   };
