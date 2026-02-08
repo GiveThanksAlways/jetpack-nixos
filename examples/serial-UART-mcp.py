@@ -82,10 +82,16 @@ async def tools() -> List[Tool]:
     return [
         Tool(
             name="send_serial_command",
-            description="Send a command to the router serial console and return its clean output.",
+            description="Send a command to the router serial console and return its clean output. Optionally show prompt lines.",
             inputSchema={
                 "type": "object",
-                "properties": {"cmd": {"type": "string"}},
+                "properties": {
+                    "cmd": {"type": "string"},
+                    "show_prompt": {
+                        "type": "boolean",
+                        "description": "If true, show prompt lines at end. Default: false (clean view)."
+                    }
+                },
                 "required": ["cmd"]
             }
         ),
@@ -111,77 +117,69 @@ async def tools() -> List[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> List[TextContent]:
+
     if name == "send_serial_command":
         cmd = arguments["cmd"]
+        show_prompt = arguments.get("show_prompt", False)
 
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as cmd_sock:
-            cmd_sock.settimeout(5.0)
-            cmd_sock.connect("/tmp/tio.sock")
-            cmd_sock.sendall(f"{cmd}\r\n".encode())
+        reader, writer = await asyncio.open_unix_connection("/tmp/tio.sock")
 
-            output = b""
-            prompt_seen = False
-            start_time = time.time()
-            max_duration = 15  # 15 second failsafe timeout
-            
-            # Common prompt patterns: [user@host dir]$ or [user@host dir]# or root@host:~# etc
-            prompt_patterns = [
-                r'\[.+@.+\]\s*[\$#]\s*$',     # [user@host:~]$ or [user@host:~/path]$
-                r'.+@.+[:#~]\s*[\$#]\s*$',    # user@host:~$ or root@host#
-                r'[\$#]\s*$'                   # Simple $ or # at end
-            ]
+        writer.write(f"{cmd}\r\n".encode())
+        await writer.drain()
 
-            while True:
+        output = bytearray()
+        start_time = time.time()
+        max_total = 5.0
+        idle_timeout = 0.35
+
+        last_data_time = start_time
+
+        try:
+            while time.time() - start_time < max_total:
                 try:
-                    # Check failsafe timeout
-                    if time.time() - start_time > max_duration:
-                        break
-                    
-                    data = cmd_sock.recv(4096)
+                    data = await asyncio.wait_for(reader.read(8192), timeout=0.2)
                     if not data:
                         break
-                    output += data
-
-                    # Check if we've seen a prompt
-                    text_so_far = output.decode(errors="ignore")
-                    lines = text_so_far.splitlines()
-                    
-                    if lines:
-                        last_line = lines[-1].strip()
-                        # Check against multiple prompt patterns
-                        for pattern in prompt_patterns:
-                            if re.search(pattern, last_line):
-                                prompt_seen = True
-                                cmd_sock.settimeout(0.3)  # Short timeout to catch any trailing data
-                                break
-
-                except socket.timeout:
-                    if prompt_seen:
+                    output.extend(data)
+                    last_data_time = time.time()
+                except asyncio.TimeoutError:
+                    if time.time() - last_data_time > idle_timeout:
                         break
-                    # If no prompt seen yet, continue with longer timeout
                     continue
-
-            # Clean up the output
-            text = output.decode(errors="ignore")
-            # Strip ANSI color codes
-            ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
-            text = ansi_escape.sub('', text)
-            lines = text.splitlines()
-
-            # Remove command echo (usually first line)
-            if lines and cmd.strip() in lines[0]:
-                lines = lines[1:]
-
-            # Remove trailing prompt line
-            if lines:
-                last_line = lines[-1].strip()
-                for pattern in prompt_patterns:
-                    if re.search(pattern, last_line):
-                        lines = lines[:-1]
+        finally:
+            # Quick final drain
+            try:
+                while True:
+                    more = await asyncio.wait_for(reader.read(8192), timeout=0.1)
+                    if not more:
                         break
+                    output.extend(more)
+            except asyncio.TimeoutError:
+                pass
 
-            cleaned_text = "\n".join(lines).strip()
-            return [TextContent(type="text", text=cleaned_text or "No output")]
+            writer.close()
+            await writer.wait_closed()
+
+        text = output.decode(errors="ignore")
+        # Remove ANSI escapes
+        text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
+        # Remove common terminal noise
+        text = re.sub(r'\[ESC\].*?\[', '', text, flags=re.DOTALL)
+        # Remove lines like 'command output shows...'
+        text = re.sub(r'^\s*command output shows.*?$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+
+        lines = [line.strip() for line in text.splitlines() if line.strip() and not line.startswith('[')]
+        # Remove command echo (usually first line)
+        if lines and cmd.strip() in lines[0]:
+            lines = lines[1:]
+
+        if not show_prompt:
+            # Remove prompt lines
+            prompt_re = re.compile(r'\[.+?@.+?:.+?\].*?[\$#] ?')
+            lines = [line for line in lines if not prompt_re.match(line)]
+
+        cleaned_text = "\n".join(lines).strip()
+        return [TextContent(type="text", text=cleaned_text or "No output")]
 
     elif name == "get_console_transcript":
         max_lines = arguments.get("max_lines")
