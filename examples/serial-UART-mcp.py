@@ -18,6 +18,10 @@ class RouterState:
         self.buffer: deque[str] = deque(maxlen=1000)
         self.partial: bytes = b""
         self.lock: threading.Lock = threading.Lock()
+        # Persistent command connection for send_serial_command
+        self.cmd_reader: asyncio.StreamReader | None = None
+        self.cmd_writer: asyncio.StreamWriter | None = None
+        self.cmd_lock: asyncio.Lock = asyncio.Lock()
 
 state = RouterState()
 
@@ -77,12 +81,32 @@ def monitoring_thread():
             cleanup_monitor()
             time.sleep(1)
 
+async def get_cmd_connection():
+    """Get or create a persistent connection for sending commands."""
+    if state.cmd_reader is None or state.cmd_writer is None or state.cmd_writer.is_closing():
+        try:
+            state.cmd_reader, state.cmd_writer = await asyncio.open_unix_connection("/tmp/tio.sock")
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to /tmp/tio.sock: {e}")
+    return state.cmd_reader, state.cmd_writer
+
 @server.list_tools()
 async def tools() -> List[Tool]:
     return [
         Tool(
             name="send_serial_command",
-            description="Send a command to the router serial console and return its clean output.",
+            description="Send a command to the router serial console and return its clean output. Fast, main command for typical shell usage.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string"}
+                },
+                "required": ["cmd"]
+            }
+        ),
+        Tool(
+            name="send_serial_command_long",
+            description="Send a command to the router serial console with extended timeout for edge cases or long-running commands.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -93,7 +117,7 @@ async def tools() -> List[Tool]:
         ),
         Tool(
             name="get_console_transcript",
-            description="Retrieve ONLY NEW console output since the last call to this tool (clears buffer afterward for efficiency). On first call, returns all accumulated output. Use this for low-token monitoring. Set full_history=true ONLY if you need the complete buffer without clearing (e.g., for full-session summary).",
+            description="Retrieve ONLY NEW console output since the last call to this tool (clears buffer afterward for efficiency). On first call, returns all accumulated output. Use this for low-token monitoring. Set full_history=true ONLY if you need the complete buffer without clearing it afterward. Avoid for repeated calls to save tokens.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -114,65 +138,98 @@ async def tools() -> List[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> List[TextContent]:
 
-    if name == "send_serial_command":
-        cmd = arguments["cmd"]
+    def _prompt_regex():
+        return re.compile(r"^\[.*?@.*?:.*?\]\\$ ?", re.MULTILINE)
 
-        reader, writer = await asyncio.open_unix_connection("/tmp/tio.sock")
+    async def _send_serial_command(cmd, max_total):
+        async with state.cmd_lock:
+            try:
+                reader, writer = await get_cmd_connection()
+            except RuntimeError as e:
+                return [TextContent(type="text", text=f"Connection error: {e}")]
 
-        writer.write(f"{cmd}\r\n".encode())
-        await writer.drain()
-
-        output = bytearray()
-        start_time = time.time()
-        max_total = 5.0
-        idle_timeout = 0.35
-
-        last_data_time = start_time
-
-        try:
-            while time.time() - start_time < max_total:
-                try:
-                    data = await asyncio.wait_for(reader.read(8192), timeout=0.2)
-                    if not data:
-                        break
-                    output.extend(data)
-                    last_data_time = time.time()
-                except asyncio.TimeoutError:
-                    if time.time() - last_data_time > idle_timeout:
-                        break
-                    continue
-        finally:
-            # Quick final drain
+            # Clear buffer
             try:
                 while True:
-                    more = await asyncio.wait_for(reader.read(8192), timeout=0.1)
+                    data = await asyncio.wait_for(reader.read(8192), timeout=0.3)
+                    if not data:
+                        break
+            except asyncio.TimeoutError:
+                pass
+
+            writer.write(f"{cmd}\n".encode())
+            await writer.drain()
+
+            output = bytearray()
+            start_time = time.time()
+            prompt_regex = _prompt_regex()
+            found_prompt = False
+            last_data_time = start_time
+
+            async def read_loop():
+                nonlocal found_prompt, last_data_time
+                while time.time() - start_time < max_total:
+                    try:
+                        data = await asyncio.wait_for(reader.read(8192), timeout=0.05)
+                        if not data:
+                            break
+                        output.extend(data)
+                        last_data_time = time.time()
+                        decoded = output.decode(errors="ignore")
+                        if prompt_regex.search(decoded):
+                            found_prompt = True
+                            break
+                    except asyncio.TimeoutError:
+                        if time.time() - last_data_time > 0.3:
+                            break
+                        continue
+
+            await asyncio.gather(read_loop())
+
+            # Drain remaining data
+            try:
+                while True:
+                    more = await asyncio.wait_for(reader.read(8192), timeout=0.05)
                     if not more:
                         break
                     output.extend(more)
             except asyncio.TimeoutError:
                 pass
 
-            writer.close()
-            await writer.wait_closed()
-
         text = output.decode(errors="ignore")
-
-        # Remove all ANSI escape codes (color, cursor, etc.)
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
         text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
-        # Remove prompt lines (e.g. [user@host:path]$)
-        prompt_re = re.compile(r'^\[.+?@.+?:.+?\].*?[\$#] ?$', re.MULTILINE)
+        text = text.replace('\u0007', '')
+
+        # Remove prompt lines
+        prompt_re = re.compile(r'^.*\[.*?@.*?:.*?\]\\$ ?.*$', re.MULTILINE)
         text = prompt_re.sub('', text)
-        # Remove command echo (usually first line)
-        lines = text.splitlines()
-        if lines and cmd.strip() in lines[0]:
-            lines = lines[1:]
 
-        # Remove empty lines but keep whitespace
-        lines = [line for line in lines if line.strip() != '']
+        # Remove command echoes
+        cmds = [c.strip() for c in cmd.split(';')]
+        cleaned_lines = []
+        for line in text.split('\n'):
+            l = line.strip()
+            if not l:
+                continue
+            if any(l == c for c in cmds):
+                continue
+            if re.match(r'^.*\[.*?@.*?:.*?\]\\$ ?.*$', l):
+                continue
+            if re.match(r'^[\u0007]+$', l):
+                continue
+            cleaned_lines.append(line.rstrip())
 
-        # Return mostly raw text, just cleaned of color codes and prompts
-        cleaned_text = "\n".join(lines)
+        while cleaned_lines and cleaned_lines[-1].strip() == '':
+            cleaned_lines.pop()
+
+        cleaned_text = "\n".join(cleaned_lines)
         return [TextContent(type="text", text=cleaned_text or "No output")]
+
+    if name == "send_serial_command":
+        return await _send_serial_command(arguments["cmd"], max_total=2.0)  # Fast, main command
+    elif name == "send_serial_command_long":
+        return await _send_serial_command(arguments["cmd"], max_total=15.0)  # Extended timeout for edge cases
 
     elif name == "get_console_transcript":
         max_lines = arguments.get("max_lines")
@@ -209,6 +266,13 @@ async def main():
             await server.run(streams[0], streams[1], server.create_initialization_options())
         finally:
             cleanup_monitor()
+            # Close persistent command connection
+            if state.cmd_writer is not None and not state.cmd_writer.is_closing():
+                state.cmd_writer.close()
+                try:
+                    await state.cmd_writer.wait_closed()
+                except Exception:
+                    pass
 
 if __name__ == "__main__":
     asyncio.run(main())
