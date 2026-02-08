@@ -17,6 +17,7 @@
   # networking.hostName = "nixos"; # Define your hostname.
 
   # Configure network connections interactively with nmcli or nmtui.
+  # networking.wireless.enable = true; # this gets wifi driver patches
   networking.networkmanager.enable = false;
 
   # Jetson Hardware (required)
@@ -111,7 +112,7 @@
   # services.openssh.enable = true;
 
   # Open ports in the firewall.
-  networking.firewall.allowedTCPPorts = [ 22 5000 ];
+  networking.firewall.allowedTCPPorts = [ 22 3301 4317 4318 5000 8889 9090 9100 9101];
   # networking.firewall.allowedUDPPorts = [ ... ];
   # Or disable the firewall altogether.
   # networking.firewall.enable = false;
