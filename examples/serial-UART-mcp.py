@@ -82,15 +82,11 @@ async def tools() -> List[Tool]:
     return [
         Tool(
             name="send_serial_command",
-            description="Send a command to the router serial console and return its clean output. Optionally show prompt lines.",
+            description="Send a command to the router serial console and return its clean output.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "cmd": {"type": "string"},
-                    "show_prompt": {
-                        "type": "boolean",
-                        "description": "If true, show prompt lines at end. Default: false (clean view)."
-                    }
+                    "cmd": {"type": "string"}
                 },
                 "required": ["cmd"]
             }
@@ -120,7 +116,6 @@ async def call_tool(name: str, arguments: dict) -> List[TextContent]:
 
     if name == "send_serial_command":
         cmd = arguments["cmd"]
-        show_prompt = arguments.get("show_prompt", False)
 
         reader, writer = await asyncio.open_unix_connection("/tmp/tio.sock")
 
@@ -161,24 +156,22 @@ async def call_tool(name: str, arguments: dict) -> List[TextContent]:
             await writer.wait_closed()
 
         text = output.decode(errors="ignore")
-        # Remove ANSI escapes
-        text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
-        # Remove common terminal noise
-        text = re.sub(r'\[ESC\].*?\[', '', text, flags=re.DOTALL)
-        # Remove lines like 'command output shows...'
-        text = re.sub(r'^\s*command output shows.*?$', '', text, flags=re.MULTILINE | re.IGNORECASE)
 
-        lines = [line.strip() for line in text.splitlines() if line.strip() and not line.startswith('[')]
+        # Remove all ANSI escape codes (color, cursor, etc.)
+        text = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', text)
+        # Remove prompt lines (e.g. [user@host:path]$)
+        prompt_re = re.compile(r'^\[.+?@.+?:.+?\].*?[\$#] ?$', re.MULTILINE)
+        text = prompt_re.sub('', text)
         # Remove command echo (usually first line)
+        lines = text.splitlines()
         if lines and cmd.strip() in lines[0]:
             lines = lines[1:]
 
-        if not show_prompt:
-            # Remove prompt lines
-            prompt_re = re.compile(r'\[.+?@.+?:.+?\].*?[\$#] ?')
-            lines = [line for line in lines if not prompt_re.match(line)]
+        # Remove empty lines but keep whitespace
+        lines = [line for line in lines if line.strip() != '']
 
-        cleaned_text = "\n".join(lines).strip()
+        # Return mostly raw text, just cleaned of color codes and prompts
+        cleaned_text = "\n".join(lines)
         return [TextContent(type="text", text=cleaned_text or "No output")]
 
     elif name == "get_console_transcript":
