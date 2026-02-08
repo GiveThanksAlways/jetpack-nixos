@@ -110,6 +110,7 @@
               enable = true;
               enableTegrastats = true;
               enableNodeExporter = true;
+              enableOpenTelemetry = true;
             };
           })
         ];

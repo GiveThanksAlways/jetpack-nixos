@@ -21,118 +21,108 @@ let
 
   # Tegrastats parser -- writes Prometheus text-format metrics
   tegrastatsExporter = pkgs.writeShellScriptBin "tegrastats-exporter" ''
-    #!${pkgs.bash}/bin/bash
-    set -euo pipefail
+    #!/usr/bin/env bash
+    # No set -e: ((expr)) returning 0 is falsy in bash and would kill the script
+    echo "Starting tegrastats exporter"
 
     TEGRASTATS_BIN="${pkgs.nvidia-jetpack.l4t-tools}/bin/tegrastats"
-    METRICS_FILE="/var/lib/jetson-telemetry/metrics/tegrastats-metrics.prom"
+    METRICS_FILE="/var/lib/jetson-telemetry/metrics/tegrastats-metrics.prom.txt"
     INTERVAL_MS=500
 
     mkdir -p "$(dirname "$METRICS_FILE")"
 
-    $TEGRASTATS_BIN --interval $INTERVAL_MS | while IFS= read -r line; do
+    "$TEGRASTATS_BIN" --interval "$INTERVAL_MS" | while IFS= read -r line; do
       timestamp=$(date +%s)
 
-      cat > "$METRICS_FILE.tmp" << 'EOF_METRICS'
-# HELP jetson_ram_used_mb RAM used in megabytes
-# TYPE jetson_ram_used_mb gauge
-# HELP jetson_ram_total_mb RAM total in megabytes
-# TYPE jetson_ram_total_mb gauge
-# HELP jetson_swap_used_mb SWAP used in megabytes
-# TYPE jetson_swap_used_mb gauge
-# HELP jetson_swap_total_mb SWAP total in megabytes
-# TYPE jetson_swap_total_mb gauge
-# HELP jetson_cpu_usage_percent CPU usage percentage per core
-# TYPE jetson_cpu_usage_percent gauge
-# HELP jetson_cpu_freq_mhz CPU frequency in MHz
-# TYPE jetson_cpu_freq_mhz gauge
-# HELP jetson_gpu_usage_percent GPU usage percentage
-# TYPE jetson_gpu_usage_percent gauge
-# HELP jetson_gpu_freq_mhz GPU frequency in MHz
-# TYPE jetson_gpu_freq_mhz gauge
-# HELP jetson_emc_freq_percent EMC frequency percentage
-# TYPE jetson_emc_freq_percent gauge
-# HELP jetson_emc_freq_mhz EMC frequency in MHz
-# TYPE jetson_emc_freq_mhz gauge
-# HELP jetson_vic_freq VIC frequency
-# TYPE jetson_vic_freq gauge
-# HELP jetson_ape_freq APE frequency
-# TYPE jetson_ape_freq gauge
-# HELP jetson_temperature_celsius Temperature in Celsius
-# TYPE jetson_temperature_celsius gauge
-# HELP jetson_power_mw Power consumption in milliwatts
-# TYPE jetson_power_mw gauge
-EOF_METRICS
+      {
+        echo "# HELP jetson_ram_used_mb RAM used in megabytes"
+        echo "# TYPE jetson_ram_used_mb gauge"
+        echo "# HELP jetson_ram_total_mb RAM total in megabytes"
+        echo "# TYPE jetson_ram_total_mb gauge"
+        echo "# HELP jetson_swap_used_mb SWAP used in megabytes"
+        echo "# TYPE jetson_swap_used_mb gauge"
+        echo "# HELP jetson_swap_total_mb SWAP total in megabytes"
+        echo "# TYPE jetson_swap_total_mb gauge"
+        echo "# HELP jetson_cpu_usage_percent CPU usage percentage per core"
+        echo "# TYPE jetson_cpu_usage_percent gauge"
+        echo "# HELP jetson_cpu_freq_mhz CPU frequency in MHz"
+        echo "# TYPE jetson_cpu_freq_mhz gauge"
+        echo "# HELP jetson_gpu_usage_percent GPU usage percentage"
+        echo "# TYPE jetson_gpu_usage_percent gauge"
+        echo "# HELP jetson_gpu_freq_mhz GPU frequency in MHz"
+        echo "# TYPE jetson_gpu_freq_mhz gauge"
+        echo "# HELP jetson_emc_freq_percent EMC frequency percentage"
+        echo "# TYPE jetson_emc_freq_percent gauge"
+        echo "# HELP jetson_emc_freq_mhz EMC frequency in MHz"
+        echo "# TYPE jetson_emc_freq_mhz gauge"
+        echo "# HELP jetson_temperature_celsius Temperature in Celsius"
+        echo "# TYPE jetson_temperature_celsius gauge"
+        echo "# HELP jetson_power_mw Power consumption in milliwatts"
+        echo "# TYPE jetson_power_mw gauge"
 
-      # RAM
-      if [[ $line =~ RAM\ ([0-9]+)/([0-9]+)MB ]]; then
-        echo "jetson_ram_used_mb ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-        echo "jetson_ram_total_mb ''${BASH_REMATCH[2]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
+        # RAM
+        if [[ $line =~ RAM\ ([0-9]+)/([0-9]+)MB ]]; then
+          echo "jetson_ram_used_mb ''${BASH_REMATCH[1]}"
+          echo "jetson_ram_total_mb ''${BASH_REMATCH[2]}"
+        fi
 
-      # SWAP
-      if [[ $line =~ SWAP\ ([0-9]+)/([0-9]+)MB ]]; then
-        echo "jetson_swap_used_mb ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-        echo "jetson_swap_total_mb ''${BASH_REMATCH[2]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
+        # SWAP
+        if [[ $line =~ SWAP\ ([0-9]+)/([0-9]+)MB ]]; then
+          echo "jetson_swap_used_mb ''${BASH_REMATCH[1]}"
+          echo "jetson_swap_total_mb ''${BASH_REMATCH[2]}"
+        fi
 
-      # CPU per-core
-      if [[ $line =~ CPU\ \[([^\]]+)\] ]]; then
-        cpu_data=''${BASH_REMATCH[1]}
-        core_num=0
-        IFS=',' read -ra CORES <<< "$cpu_data"
-        for core in "''${CORES[@]}"; do
-          if [[ $core =~ ([0-9]+)%@([0-9]+) ]]; then
-            echo "jetson_cpu_usage_percent{core=\"$core_num\"} ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-            echo "jetson_cpu_freq_mhz{core=\"$core_num\"} ''${BASH_REMATCH[2]} $timestamp" >> "$METRICS_FILE.tmp"
-            ((core_num++))
-          fi
+        # CPU per-core (handles "off" cores gracefully)
+        if [[ $line =~ CPU\ \[([^\]]+)\] ]]; then
+          cpu_data="''${BASH_REMATCH[1]}"
+          core_num=0
+          IFS=',' read -ra CORES <<< "$cpu_data"
+          for core in "''${CORES[@]}"; do
+            if [[ $core =~ ([0-9]+)%@([0-9]+) ]]; then
+              echo "jetson_cpu_usage_percent{core=\"$core_num\"} ''${BASH_REMATCH[1]}"
+              echo "jetson_cpu_freq_mhz{core=\"$core_num\"} ''${BASH_REMATCH[2]}"
+            fi
+            core_num=$((core_num + 1))
+          done
+        fi
+
+        # GPU — handles both "GR3D_FREQ 0%@1300" and "GR3D_FREQ 0%" formats
+        if [[ $line =~ GR3D_FREQ\ ([0-9]+)%@([0-9]+) ]]; then
+          echo "jetson_gpu_usage_percent ''${BASH_REMATCH[1]}"
+          echo "jetson_gpu_freq_mhz ''${BASH_REMATCH[2]}"
+        elif [[ $line =~ GR3D_FREQ\ ([0-9]+)% ]]; then
+          echo "jetson_gpu_usage_percent ''${BASH_REMATCH[1]}"
+        fi
+
+        # EMC
+        if [[ $line =~ EMC_FREQ\ ([0-9]+)%@([0-9]+) ]]; then
+          echo "jetson_emc_freq_percent ''${BASH_REMATCH[1]}"
+          echo "jetson_emc_freq_mhz ''${BASH_REMATCH[2]}"
+        elif [[ $line =~ EMC_FREQ\ ([0-9]+)% ]]; then
+          echo "jetson_emc_freq_percent ''${BASH_REMATCH[1]}"
+        fi
+
+        # Temperatures — match both upper and lowercase sensor names (cpu, soc0, tj, etc.)
+        temp_line="$line"
+        while [[ $temp_line =~ ([A-Za-z0-9_]+)@([0-9.-]+)C ]]; do
+          sensor="''${BASH_REMATCH[1]}"
+          temp="''${BASH_REMATCH[2]}"
+          echo "jetson_temperature_celsius{sensor=\"$sensor\"} $temp"
+          temp_line="''${temp_line/''${sensor}@''${temp}C/}"
         done
-      fi
 
-      # GPU (GR3D_FREQ)
-      if [[ $line =~ GR3D_FREQ\ ([0-9]+)%@([0-9]+) ]]; then
-        echo "jetson_gpu_usage_percent ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-        echo "jetson_gpu_freq_mhz ''${BASH_REMATCH[2]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
+        # Power rails — match any VDD_*/VIN_* rail pattern: "NAME curr/avg" in mW
+        power_line="$line"
+        while [[ $power_line =~ (V[A-Z0-9_]+)\ ([0-9]+)mW/([0-9]+)mW ]]; do
+          rail="''${BASH_REMATCH[1]}"
+          curr="''${BASH_REMATCH[2]}"
+          echo "jetson_power_mw{rail=\"$rail\"} $curr"
+          power_line="''${power_line/''${rail} ''${curr}mW/}"
+        done
 
-      # EMC
-      if [[ $line =~ EMC_FREQ\ ([0-9]+)%@([0-9]+) ]]; then
-        echo "jetson_emc_freq_percent ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-        echo "jetson_emc_freq_mhz ''${BASH_REMATCH[2]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
+      } > "$METRICS_FILE.tmp"
 
-      # VIC
-      if [[ $line =~ VIC_FREQ\ ([0-9]+) ]]; then
-        echo "jetson_vic_freq ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
-
-      # APE
-      if [[ $line =~ APE\ ([0-9]+) ]]; then
-        echo "jetson_ape_freq ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
-
-      # Temperatures
-      temp_pattern="([A-Z0-9_]+)@([0-9.-]+)C"
-      while [[ $line =~ $temp_pattern ]]; do
-        sensor=''${BASH_REMATCH[1]}
-        temp=''${BASH_REMATCH[2]}
-        echo "jetson_temperature_celsius{sensor=\"$sensor\"} $temp $timestamp" >> "$METRICS_FILE.tmp"
-        line="''${line/$sensor@$temp''C/}"
-      done
-
-      # Power rails
-      if [[ $line =~ VDD_IN\ ([0-9]+)/([0-9]+) ]]; then
-        echo "jetson_power_mw{rail=\"VDD_IN\"} ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
-      if [[ $line =~ VDD_CPU_GPU_CV\ ([0-9]+)/([0-9]+) ]]; then
-        echo "jetson_power_mw{rail=\"VDD_CPU_GPU_CV\"} ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
-      if [[ $line =~ VDD_SOC\ ([0-9]+)/([0-9]+) ]]; then
-        echo "jetson_power_mw{rail=\"VDD_SOC\"} ''${BASH_REMATCH[1]} $timestamp" >> "$METRICS_FILE.tmp"
-      fi
-
-      mv "$METRICS_FILE.tmp" "$METRICS_FILE"
+      mv -f "$METRICS_FILE.tmp" "$METRICS_FILE"
     done
   '';
 
@@ -317,7 +307,7 @@ in
 
   config = mkIf cfg.enable {
     environment.systemPackages = with pkgs;
-      [ pkgs.nvidia-jetpack.l4t-tools ]
+      [ pkgs.nvidia-jetpack.l4t-tools pkgs.python3 ]
       ++ lib.optionals (pkgs.nvidia-jetpack.l4tAtLeast "36")
         [ pkgs.nvidia-jetpack.nvidia-smi ];
 
@@ -354,11 +344,7 @@ in
       requires = [ "tegrastats-exporter.service" ];
       serviceConfig = {
         Type = "simple";
-        ExecStart = ''
-          ${pkgs.python3}/bin/python3 -m http.server 9101 \
-            --directory ${cfg.dataDir}/metrics \
-            --bind localhost
-        '';
+        ExecStart = "${pkgs.python3}/bin/python3 -m http.server 9101 --directory ${cfg.dataDir}/metrics --bind 0.0.0.0";
         WorkingDirectory = "${cfg.dataDir}/metrics";
         Restart = "on-failure";
         RestartSec = "5s";
@@ -374,7 +360,7 @@ in
       port = 9100;
       enabledCollectors = [
         "cpu" "loadavg" "meminfo" "diskstats"
-        "filesystem" "netdev" "thermal"
+        "filesystem" "netdev" "thermal_zone"
       ];
     };
 
@@ -387,6 +373,7 @@ in
         {
           job_name = "jetson-tegrastats";
           scrape_interval = "5s";
+          metrics_path = "/tegrastats-metrics.prom.txt";
           static_configs = [{
             targets = [ "localhost:9101" ];
             labels = { device = "jetson"; source = "tegrastats"; };
@@ -438,7 +425,7 @@ in
       after = [ "network.target" ];
       serviceConfig = {
         Type = "simple";
-        ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcontribcol --config=${otelConfig}";
+        ExecStart = "${pkgs.opentelemetry-collector-contrib}/bin/otelcol-contrib --config=${otelConfig}";
         Restart = "on-failure";
         RestartSec = "5s";
       };

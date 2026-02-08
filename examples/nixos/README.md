@@ -10,14 +10,14 @@ Composable NixOS system configs. Pick a configuration at build time.
 
 ## Configurations
 
-| Config | Command | What it adds |
-|---|---|---|
-| Base | `nixos-rebuild switch --flake .#nixos` | DHCP networking, SSH, Jetpack |
-| Static IP | `nixos-rebuild switch --flake .#nixos-static-ip` | Base + static IP on eth0 |
-| Performance | `nixos-rebuild switch --flake .#nixos-perf` | Base + MAXN, locked clocks, hugepages, zram |
-| llama.cpp | `nixos-rebuild switch --flake .#nixos-llama-cpp` | Perf + llama.cpp server on :5000 |
-| TabbyAPI | `nixos-rebuild switch --flake .#nixos-tabby-api` | Perf + TabbyAPI server |
-| Telemetry | `nixos-rebuild switch --flake .#nixos-telemetry` | Base + Grafana/Prometheus/tegrastats |
+| Config      | Command                                          | What it adds                                |
+| ----------- | ------------------------------------------------ | ------------------------------------------- |
+| Base        | `nixos-rebuild switch --flake .#nixos`           | DHCP networking, SSH, Jetpack               |
+| Static IP   | `nixos-rebuild switch --flake .#nixos-static-ip` | Base + static IP on eth0                    |
+| Performance | `nixos-rebuild switch --flake .#nixos-perf`      | Base + MAXN, locked clocks, hugepages, zram |
+| llama.cpp   | `nixos-rebuild switch --flake .#nixos-llama-cpp` | Perf + llama.cpp server on :5000            |
+| TabbyAPI    | `nixos-rebuild switch --flake .#nixos-tabby-api` | Perf + TabbyAPI server                      |
+| Telemetry   | `nixos-rebuild switch --flake .#nixos-telemetry` | Base + Grafana/Prometheus/tegrastats        |
 
 ## Telemetry
 
@@ -30,16 +30,16 @@ The `nixos-telemetry` config enables a full observability stack:
 
 Metrics collected:
 
-| Metric | Source |
-|---|---|
-| GPU load %, frequency | tegrastats (GR3D_FREQ) |
-| EMC load %, frequency | tegrastats (EMC_FREQ) |
-| VIC, APE frequency | tegrastats |
-| Per-core CPU %, frequency | tegrastats |
-| RAM / SWAP usage | tegrastats |
-| Temperatures (all sensors) | tegrastats |
-| Power per rail (mW) | tegrastats (VDD_IN, CPU_GPU_CV, SOC) |
-| System metrics | node-exporter |
+| Metric                     | Source                               |
+| -------------------------- | ------------------------------------ |
+| GPU load %, frequency      | tegrastats (GR3D_FREQ)               |
+| EMC load %, frequency      | tegrastats (EMC_FREQ)                |
+| VIC, APE frequency         | tegrastats                           |
+| Per-core CPU %, frequency  | tegrastats                           |
+| RAM / SWAP usage           | tegrastats                           |
+| Temperatures (all sensors) | tegrastats                           |
+| Power per rail (mW)        | tegrastats (VDD_IN, CPU_GPU_CV, SOC) |
+| System metrics             | node-exporter                        |
 
 To view dashboards from your PC, see `../telemetry-viewer/`.
 
@@ -47,12 +47,12 @@ Optional: set `enableOpenTelemetry = true` for OTLP collector on ports 4317/4318
 
 ## Modules
 
-| File | Purpose |
-|---|---|
-| `modules/performance.nix` | MAXN power mode, locked clocks, hugepages, zram |
-| `modules/llama-cpp-server.nix` | llama.cpp systemd service with CUDA |
-| `modules/tabby-api.nix` | TabbyAPI systemd service |
-| `modules/telemetry.nix` | Grafana + Prometheus + tegrastats telemetry stack |
+| File                           | Purpose                                           |
+| ------------------------------ | ------------------------------------------------- |
+| `modules/performance.nix`      | MAXN power mode, locked clocks, hugepages, zram   |
+| `modules/llama-cpp-server.nix` | llama.cpp systemd service with CUDA               |
+| `modules/tabby-api.nix`        | TabbyAPI systemd service                          |
+| `modules/telemetry.nix`        | Grafana + Prometheus + tegrastats telemetry stack |
 
 ## Customizing
 

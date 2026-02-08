@@ -22,12 +22,6 @@ services.jetson-telemetry = {
 };
 ```
 
-Rebuild:
-
-```bash
-sudo nixos-rebuild switch
-```
-
 ## On your PC
 
 ```bash
