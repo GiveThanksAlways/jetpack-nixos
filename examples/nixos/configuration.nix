@@ -13,6 +13,9 @@
   # Use the systemd-boot EFI boot loader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  
+  # Enable kernel console output on serial UART
+  boot.kernelParams = [ "console=ttyTCU0,115200" ];
 
   # networking.hostName = "nixos"; # Define your hostname.
 
@@ -34,6 +37,44 @@
     openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+    ];
+  };
+
+  # AI agent account
+  users.users.agent = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "video" "render" "networkmanager" ];
+    initialPassword = "changeme";
+    openssh.authorizedKeys.keys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+    ];
+  };
+
+  # Serial console for agent user (ttyTCU0 is the Orin's debug UART)
+  systemd.services."serial-getty@ttyTCU0" = {
+    overrideStrategy = "asDropin";
+    enable = true;
+    wantedBy = [ "getty.target" ];
+    serviceConfig.ExecStart = [
+      ""
+      "${pkgs.util-linux}/bin/agetty --autologin agent --noclear --keep-baud 115200,38400,9600 %I $TERM"
+    ];
+  };
+
+  security.sudo = {
+    enable = true;
+    wheelNeedsPassword = true;
+    extraRules = [
+      {
+        users = [ "agent" "spencer" ];
+        commands = [
+          {
+            command = "ALL";
+            options = [ "NOPASSWD" ];
+          }
+        ];
+      }
     ];
   };
 
