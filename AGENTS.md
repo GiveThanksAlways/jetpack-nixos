@@ -8,6 +8,8 @@ We are working with an Nvidia Jetson dev kit Orin AGX 64GB
 
 - **MAKE SURE TO BUILD USING THE FLAKE/CONFIGURATION inside jetpack-nixos/examples/nixos/**
 
+- **USE SCP TO COPY THE LOCAL FILE CHANGES WE MAKE TO jetpack-nixos/examples/nixos/**
+
 - I repeat, you must use the serial-uart-mcp tool to access the uart serial shell on device to run commands/ see the output.
 
 ## Quick UART Recovery Hint
@@ -19,7 +21,13 @@ If the UART serial console gets stuck in a pager or log view, spam 'q', RETURN, 
 - I put the `configuration.nix` and the `hardware-configuration.nix` there for quick experimentation
 
 ```bash
-sudo nixos-rebuild switch --flake /home/spencer/jetpack-nixos/examples/nixos#nixos-telemetry --show-trace
+# example build
+sudo nixos-rebuild switch --flake /home/agent/jetpack-nixos/examples/nixos#nixos-telemetry --show-trace
+
+# scp command (use this to transfer our file changes to the device)
+# NOTE!!! when running this command, you should be in the jetpack-nixos root folder (since examples/nixos is relative and spencer is user on PC, agent on dev kit)
+# be careful with what dir you are in/ what dir you are copying to on device. For ease of use, we just copy the entire nixos dir
+scp -r examples/nixos spencer@192.168.8.162:/home/spencer/jetpack-nixos/examples/
 ```
 
 Each subfolder is a self-contained flake. Pick the one that fits your use case.
@@ -55,5 +63,5 @@ cd vLLM && nix develop
 # tinygrad dev shell (CUDA + NV backend)
 cd tinygrad && nix develop
 
-# view telemetry dashboards from your PC
-cd telemetry-viewer && ./connect-telemetry.sh <jetson-ip>
+# view telemetry dashboards from your PC (user named agent)
+cd telemetry-viewer && ./connect-telemetry.sh <jetson-ip> <ssh-user>
