@@ -32,4 +32,5 @@ ssh -N \
   -L "${PROMETHEUS_PORT}:localhost:${PROMETHEUS_PORT}" \
   -L "9100:localhost:9100" \
   -L "9101:localhost:9101" \
+  -L "8889:localhost:8889" \
   "${SSH_USER}@${JETSON_IP}"

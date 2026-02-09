@@ -135,7 +135,7 @@ let
     time = { from = "now-5m"; to = "now"; };
     style = "dark";
     panels = [
-      # Row 0: GPU
+      # ── Row 0: GPU ──
       {
         id = 1; title = "GPU Load"; type = "gauge";
         gridPos = { h = 8; w = 6; x = 0; y = 0; };
@@ -152,23 +152,17 @@ let
       }
       {
         id = 2; title = "GPU Utilization"; type = "timeseries";
-        gridPos = { h = 8; w = 10; x = 6; y = 0; };
+        gridPos = { h = 8; w = 18; x = 6; y = 0; };
         targets = [{ expr = "jetson_gpu_usage_percent"; legendFormat = "GPU Usage %"; }];
         fieldConfig.defaults = {
           unit = "percent"; min = 0; max = 100;
           custom.fillOpacity = 20; custom.lineWidth = 2; custom.gradientMode = "scheme";
         };
       }
+      # ── Row 1: CPU ──
       {
-        id = 3; title = "GPU Frequency"; type = "timeseries";
-        gridPos = { h = 8; w = 8; x = 16; y = 0; };
-        targets = [{ expr = "jetson_gpu_freq_mhz"; legendFormat = "GPU Freq (MHz)"; }];
-        fieldConfig.defaults = { unit = "MHz"; custom.fillOpacity = 10; custom.lineWidth = 2; };
-      }
-      # Row 1: CPU + Memory
-      {
-        id = 4; title = "CPU Usage by Core"; type = "timeseries";
-        gridPos = { h = 8; w = 16; x = 0; y = 8; };
+        id = 3; title = "CPU Usage by Core"; type = "timeseries";
+        gridPos = { h = 8; w = 14; x = 0; y = 8; };
         targets = [{ expr = "jetson_cpu_usage_percent"; legendFormat = "Core {{core}}"; }];
         fieldConfig.defaults = {
           unit = "percent"; min = 0; max = 100;
@@ -176,8 +170,18 @@ let
         };
       }
       {
+        id = 4; title = "CPU Frequency"; type = "timeseries";
+        gridPos = { h = 8; w = 10; x = 14; y = 8; };
+        targets = [{ expr = "jetson_cpu_freq_mhz"; legendFormat = "Core {{core}}"; }];
+        fieldConfig.defaults = {
+          unit = "MHz";
+          custom.fillOpacity = 10; custom.lineWidth = 1;
+        };
+      }
+      # ── Row 2: Memory + EMC ──
+      {
         id = 5; title = "RAM Used"; type = "gauge";
-        gridPos = { h = 8; w = 4; x = 16; y = 8; };
+        gridPos = { h = 8; w = 4; x = 0; y = 16; };
         targets = [{ expr = "jetson_ram_used_mb / jetson_ram_total_mb * 100"; legendFormat = "RAM %"; }];
         fieldConfig.defaults = {
           unit = "percent"; min = 0; max = 100;
@@ -191,40 +195,19 @@ let
       }
       {
         id = 6; title = "Memory (MB)"; type = "timeseries";
-        gridPos = { h = 8; w = 4; x = 20; y = 8; };
+        gridPos = { h = 8; w = 8; x = 4; y = 16; };
         targets = [
           { expr = "jetson_ram_used_mb"; legendFormat = "RAM"; }
           { expr = "jetson_swap_used_mb"; legendFormat = "SWAP"; }
         ];
-        fieldConfig.defaults.unit = "mbytes";
-      }
-      # Row 2: Thermals + Power
-      {
-        id = 7; title = "Temperatures"; type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 0; y = 16; };
-        targets = [{ expr = "jetson_temperature_celsius"; legendFormat = "{{sensor}}"; }];
         fieldConfig.defaults = {
-          unit = "celsius"; custom.fillOpacity = 5;
-          thresholds.mode = "absolute";
-          thresholds.steps = [
-            { value = null; color = "green"; }
-            { value = 70; color = "yellow"; }
-            { value = 85; color = "red"; }
-          ];
+          unit = "mbytes";
+          custom.fillOpacity = 10; custom.lineWidth = 2;
         };
       }
       {
-        id = 8; title = "Power Consumption"; type = "timeseries";
-        gridPos = { h = 8; w = 12; x = 12; y = 16; };
-        targets = [{ expr = "jetson_power_mw"; legendFormat = "{{rail}}"; }];
-        fieldConfig.defaults = {
-          unit = "mwatt"; custom.fillOpacity = 15; custom.gradientMode = "scheme";
-        };
-      }
-      # Row 3: EMC + Engines
-      {
-        id = 9; title = "EMC Load"; type = "gauge";
-        gridPos = { h = 8; w = 6; x = 0; y = 24; };
+        id = 7; title = "EMC Load"; type = "gauge";
+        gridPos = { h = 8; w = 4; x = 12; y = 16; };
         targets = [{ expr = "jetson_emc_freq_percent"; legendFormat = "EMC %"; }];
         fieldConfig.defaults = {
           unit = "percent"; min = 0; max = 100;
@@ -237,27 +220,337 @@ let
         };
       }
       {
-        id = 10; title = "Memory Controller"; type = "timeseries";
-        gridPos = { h = 8; w = 6; x = 6; y = 24; };
+        id = 8; title = "Memory Controller"; type = "timeseries";
+        gridPos = { h = 8; w = 8; x = 16; y = 16; };
         targets = [{ expr = "jetson_emc_freq_mhz"; legendFormat = "EMC MHz"; }];
-        fieldConfig.defaults.unit = "MHz";
+        fieldConfig.defaults = {
+          unit = "MHz";
+          custom.fillOpacity = 10; custom.lineWidth = 2;
+        };
       }
+      # ── Row 3: Thermals + Power ──
       {
-        id = 11; title = "VIC Freq"; type = "stat";
-        gridPos = { h = 8; w = 6; x = 12; y = 24; };
-        targets = [{ expr = "jetson_vic_freq"; legendFormat = "VIC"; }];
-        fieldConfig.defaults.thresholds = {
-          mode = "absolute";
-          steps = [{ value = null; color = "blue"; }];
+        id = 9; title = "Temperatures"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 0; y = 24; };
+        targets = [{ expr = "jetson_temperature_celsius"; legendFormat = "{{sensor}}"; }];
+        fieldConfig.defaults = {
+          unit = "celsius"; custom.fillOpacity = 5;
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 70; color = "yellow"; }
+            { value = 85; color = "red"; }
+          ];
         };
       }
       {
-        id = 12; title = "APE Freq"; type = "stat";
-        gridPos = { h = 8; w = 6; x = 18; y = 24; };
-        targets = [{ expr = "jetson_ape_freq"; legendFormat = "APE"; }];
-        fieldConfig.defaults.thresholds = {
-          mode = "absolute";
-          steps = [{ value = null; color = "purple"; }];
+        id = 10; title = "Power Consumption"; type = "timeseries";
+        gridPos = { h = 8; w = 8; x = 12; y = 24; };
+        targets = [{ expr = "jetson_power_mw"; legendFormat = "{{rail}}"; }];
+        fieldConfig.defaults = {
+          unit = "mwatt"; custom.fillOpacity = 15; custom.gradientMode = "scheme";
+        };
+      }
+      {
+        id = 11; title = "Total Power"; type = "stat";
+        gridPos = { h = 8; w = 4; x = 20; y = 24; };
+        targets = [{ expr = "sum(jetson_power_mw)"; legendFormat = "Total"; }];
+        fieldConfig.defaults = {
+          unit = "mwatt";
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 15000; color = "yellow"; }
+            { value = 30000; color = "red"; }
+          ];
+        };
+      }
+    ];
+  });
+
+  # Node Exporter dashboard JSON
+  nodeExporterDashboard = pkgs.writeText "jetson-node-exporter-dashboard.json" (builtins.toJSON {
+    title = "Jetson System Metrics";
+    tags = ["jetson" "system" "node-exporter"];
+    timezone = "browser";
+    refresh = "5s";
+    time = { from = "now-15m"; to = "now"; };
+    style = "dark";
+    panels = [
+      # ── Row 0: Overview ──
+      {
+        id = 1; title = "CPU Usage"; type = "gauge";
+        gridPos = { h = 6; w = 6; x = 0; y = 0; };
+        targets = [{
+          expr = "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)";
+          legendFormat = "CPU %";
+        }];
+        fieldConfig.defaults = {
+          unit = "percent"; min = 0; max = 100;
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 60; color = "yellow"; }
+            { value = 85; color = "red"; }
+          ];
+        };
+      }
+      {
+        id = 2; title = "Load Average"; type = "timeseries";
+        gridPos = { h = 6; w = 6; x = 6; y = 0; };
+        targets = [
+          { expr = "node_load1"; legendFormat = "1m"; }
+          { expr = "node_load5"; legendFormat = "5m"; }
+          { expr = "node_load15"; legendFormat = "15m"; }
+        ];
+        fieldConfig.defaults = {
+          custom.fillOpacity = 10; custom.lineWidth = 2;
+        };
+      }
+      {
+        id = 3; title = "Memory Used"; type = "gauge";
+        gridPos = { h = 6; w = 6; x = 12; y = 0; };
+        targets = [{
+          expr = "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100";
+          legendFormat = "Memory %";
+        }];
+        fieldConfig.defaults = {
+          unit = "percent"; min = 0; max = 100;
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 70; color = "yellow"; }
+            { value = 90; color = "red"; }
+          ];
+        };
+      }
+      {
+        id = 4; title = "Uptime"; type = "stat";
+        gridPos = { h = 6; w = 6; x = 18; y = 0; };
+        targets = [{
+          expr = "time() - node_boot_time_seconds";
+          legendFormat = "Uptime";
+        }];
+        fieldConfig.defaults = {
+          unit = "s";
+          thresholds.mode = "absolute";
+          thresholds.steps = [{ value = null; color = "blue"; }];
+        };
+      }
+      # ── Row 1: CPU Detailed ──
+      {
+        id = 5; title = "CPU Usage by Mode"; type = "timeseries";
+        gridPos = { h = 8; w = 24; x = 0; y = 6; };
+        targets = [
+          { expr = "avg(rate(node_cpu_seconds_total{mode=\"user\"}[5m])) * 100"; legendFormat = "user"; }
+          { expr = "avg(rate(node_cpu_seconds_total{mode=\"system\"}[5m])) * 100"; legendFormat = "system"; }
+          { expr = "avg(rate(node_cpu_seconds_total{mode=\"iowait\"}[5m])) * 100"; legendFormat = "iowait"; }
+          { expr = "avg(rate(node_cpu_seconds_total{mode=\"irq\"}[5m])) * 100"; legendFormat = "irq"; }
+          { expr = "avg(rate(node_cpu_seconds_total{mode=\"softirq\"}[5m])) * 100"; legendFormat = "softirq"; }
+        ];
+        fieldConfig.defaults = {
+          unit = "percent"; min = 0;
+          custom.fillOpacity = 30; custom.lineWidth = 1; custom.stacking.mode = "normal";
+        };
+      }
+      # ── Row 2: Memory + Filesystem ──
+      {
+        id = 6; title = "Memory Usage"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 0; y = 14; };
+        targets = [
+          { expr = "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes"; legendFormat = "Used"; }
+          { expr = "node_memory_Cached_bytes"; legendFormat = "Cached"; }
+          { expr = "node_memory_Buffers_bytes"; legendFormat = "Buffers"; }
+          { expr = "node_memory_MemAvailable_bytes"; legendFormat = "Available"; }
+        ];
+        fieldConfig.defaults = {
+          unit = "bytes";
+          custom.fillOpacity = 20; custom.lineWidth = 1;
+        };
+      }
+      {
+        id = 7; title = "Filesystem Usage"; type = "bargauge";
+        gridPos = { h = 8; w = 12; x = 12; y = 14; };
+        targets = [{
+          expr = "100 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"} * 100)";
+          legendFormat = "{{mountpoint}}";
+        }];
+        fieldConfig.defaults = {
+          unit = "percent"; min = 0; max = 100;
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 70; color = "yellow"; }
+            { value = 90; color = "red"; }
+          ];
+        };
+        options.orientation = "horizontal";
+      }
+      # ── Row 3: Network ──
+      {
+        id = 8; title = "Network Receive"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 0; y = 22; };
+        targets = [{
+          expr = "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])";
+          legendFormat = "{{device}} RX";
+        }];
+        fieldConfig.defaults = {
+          unit = "Bps";
+          custom.fillOpacity = 15; custom.lineWidth = 2; custom.gradientMode = "scheme";
+        };
+      }
+      {
+        id = 9; title = "Network Transmit"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 12; y = 22; };
+        targets = [{
+          expr = "rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m])";
+          legendFormat = "{{device}} TX";
+        }];
+        fieldConfig.defaults = {
+          unit = "Bps";
+          custom.fillOpacity = 15; custom.lineWidth = 2; custom.gradientMode = "scheme";
+        };
+      }
+      # ── Row 4: Disk I/O ──
+      {
+        id = 10; title = "Disk Read"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 0; y = 30; };
+        targets = [{
+          expr = "rate(node_disk_read_bytes_total[5m])";
+          legendFormat = "{{device}}";
+        }];
+        fieldConfig.defaults = {
+          unit = "Bps";
+          custom.fillOpacity = 15; custom.lineWidth = 2;
+        };
+      }
+      {
+        id = 11; title = "Disk Write"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 12; y = 30; };
+        targets = [{
+          expr = "rate(node_disk_written_bytes_total[5m])";
+          legendFormat = "{{device}}";
+        }];
+        fieldConfig.defaults = {
+          unit = "Bps";
+          custom.fillOpacity = 15; custom.lineWidth = 2;
+        };
+      }
+      # ── Row 5: Thermal ──
+      {
+        id = 12; title = "Thermal Zones"; type = "timeseries";
+        gridPos = { h = 8; w = 24; x = 0; y = 38; };
+        targets = [{
+          expr = "node_thermal_zone_temp";
+          legendFormat = "{{type}} zone{{zone}}";
+        }];
+        fieldConfig.defaults = {
+          unit = "celsius"; custom.fillOpacity = 5; custom.lineWidth = 2;
+          thresholds.mode = "absolute";
+          thresholds.steps = [
+            { value = null; color = "green"; }
+            { value = 70; color = "yellow"; }
+            { value = 85; color = "red"; }
+          ];
+        };
+      }
+    ];
+  });
+
+  # OpenTelemetry Collector dashboard JSON
+  otelDashboard = pkgs.writeText "jetson-otel-dashboard.json" (builtins.toJSON {
+    title = "OpenTelemetry Collector";
+    tags = ["jetson" "opentelemetry" "otel"];
+    timezone = "browser";
+    refresh = "10s";
+    time = { from = "now-15m"; to = "now"; };
+    style = "dark";
+    panels = [
+      # ── Row 0: Collector Health ──
+      {
+        id = 1; title = "Collector Uptime"; type = "stat";
+        gridPos = { h = 6; w = 8; x = 0; y = 0; };
+        targets = [{
+          expr = "otelcol_process_uptime";
+          legendFormat = "Uptime";
+        }];
+        fieldConfig.defaults = {
+          unit = "s";
+          thresholds.mode = "absolute";
+          thresholds.steps = [{ value = null; color = "green"; }];
+        };
+      }
+      {
+        id = 2; title = "Collector CPU"; type = "timeseries";
+        gridPos = { h = 6; w = 8; x = 8; y = 0; };
+        targets = [{
+          expr = "rate(otelcol_process_cpu_seconds[5m])";
+          legendFormat = "CPU";
+        }];
+        fieldConfig.defaults = {
+          unit = "percentunit";
+          custom.fillOpacity = 20; custom.lineWidth = 2;
+        };
+      }
+      {
+        id = 3; title = "Collector Memory (RSS)"; type = "timeseries";
+        gridPos = { h = 6; w = 8; x = 16; y = 0; };
+        targets = [{
+          expr = "otelcol_process_memory_rss";
+          legendFormat = "RSS";
+        }];
+        fieldConfig.defaults = {
+          unit = "bytes";
+          custom.fillOpacity = 20; custom.lineWidth = 2;
+        };
+      }
+      # ── Row 1: Metrics Pipeline ──
+      {
+        id = 4; title = "Metrics Received"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 0; y = 6; };
+        targets = [
+          {
+            expr = "rate(otelcol_receiver_accepted_metric_points[5m])";
+            legendFormat = "{{receiver}} accepted";
+          }
+          {
+            expr = "rate(otelcol_receiver_refused_metric_points[5m])";
+            legendFormat = "{{receiver}} refused";
+          }
+        ];
+        fieldConfig.defaults = {
+          unit = "cps";
+          custom.fillOpacity = 15; custom.lineWidth = 2;
+        };
+      }
+      {
+        id = 5; title = "Metrics Exported"; type = "timeseries";
+        gridPos = { h = 8; w = 12; x = 12; y = 6; };
+        targets = [
+          {
+            expr = "rate(otelcol_exporter_sent_metric_points[5m])";
+            legendFormat = "{{exporter}} sent";
+          }
+          {
+            expr = "rate(otelcol_exporter_send_failed_metric_points[5m])";
+            legendFormat = "{{exporter}} failed";
+          }
+        ];
+        fieldConfig.defaults = {
+          unit = "cps";
+          custom.fillOpacity = 15; custom.lineWidth = 2;
+        };
+      }
+      # ── Row 2: Application Metrics ──
+      {
+        id = 6; title = "Application Metrics (via OTLP)"; type = "timeseries";
+        gridPos = { h = 8; w = 24; x = 0; y = 14; };
+        targets = [{
+          expr = "{job=\"otel-collector\", __name__!~\"otelcol_.*|up|scrape_.*\"}";
+          legendFormat = "{{__name__}}";
+        }];
+        fieldConfig.defaults = {
+          custom.fillOpacity = 10; custom.lineWidth = 2;
         };
       }
     ];
@@ -318,6 +611,8 @@ in
       "d ${cfg.dataDir}/grafana 0755 root root -"
       "d ${cfg.dataDir}/grafana/dashboards 0755 root root -"
       "L+ ${cfg.dataDir}/grafana/dashboards/jetson-gpu.json - - - - ${gpuDashboard}"
+      "L+ ${cfg.dataDir}/grafana/dashboards/jetson-system.json - - - - ${nodeExporterDashboard}"
+      "L+ ${cfg.dataDir}/grafana/dashboards/jetson-otel.json - - - - ${otelDashboard}"
     ];
 
     # Tegrastats exporter
@@ -413,6 +708,11 @@ in
           prometheus:
             endpoint: "0.0.0.0:8889"
             namespace: "otel"
+        telemetry:
+          metrics:
+            address: "0.0.0.0:8889"
+            prometheus:
+              enable: true
         service:
           pipelines:
             metrics:
