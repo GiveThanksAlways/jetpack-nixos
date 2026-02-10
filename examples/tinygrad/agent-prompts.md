@@ -224,7 +224,6 @@ Keep the existing `Results: X/Y tests passed` summary at the end of main(). Add 
 When you are done with Phase 3, write a `Learning-Phase3.md` that teaches the reader how things work — the linear history/iteration of how you discovered things, what broke, what surprised you, and the key concepts. Follow the same spirit as `Learning-Phase1.md`: chronological, honest about mistakes, with diagrams and code snippets that explain the "why" not just the "what."
 
 Good Luck and God Speed
-```
 
 ---
 
