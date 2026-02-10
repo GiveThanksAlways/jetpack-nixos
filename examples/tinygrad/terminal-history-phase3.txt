@@ -1745,3 +1745,572 @@ include/uapi/linux/nvgpu.h:1199:#define NVGPU_CHANNEL_GR_ERROR_SW_NOTIFY        
 include/uapi/linux/nvgpu.h:1202:#define NVGPU_CHANNEL_GR_ILLEGAL_NOTIFY                 25
 
 [agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && find . -path "*/hal/*usermode*" -o -path "*/hw/*usermode*" 2>/dev/null
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -rn "ops\.usermode\." --include="*.c" --include="*.h" | head -50
+drivers/gpu/nvgpu/common/mm/gmmu/page_table.c:243:              virtual_func_offset = g->ops.usermode.base(g);
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c:2840:   if (g->ops.usermode.base == NULL)
+drivers/gpu/nvgpu/os/linux/linux-channel.c:563: args->work_submit_token = g->ops.usermode.doorbell_token(c);
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -rn "usermode" --include="*.c" --include="*.h" -l
+drivers/gpu/nvgpu/common/mm/gmmu/page_table.c
+drivers/gpu/nvgpu/common/fifo/channel.c
+drivers/gpu/nvgpu/os/linux/ioctl_channel.c
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.h
+drivers/gpu/nvgpu/os/linux/linux-channel.c
+include/uapi/linux/nvgpu.h
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -rn "\.doorbell_token\b\|\.base\b.*usermode\|hal_usermode\|usermode_init\|gops.*usermode" --include="*.c" --include="*.h" | head -30
+drivers/gpu/nvgpu/os/linux/linux-channel.c:563: args->work_submit_token = g->ops.usermode.doorbell_token(c);
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -n "usermode" include/uapi/linux/nvgpu.h
+952:    __u64 buffer_ptr;       /* in: usermode pointer to receive the
+1089: * Enable usermode submits on this channel.
+1091: * Submits in usermode are supported in some environments. If supported and
+1093: * token is passed back to be written in the doorbell register in the usermode
+1100: * Map usermode resources to GPU and return GPU VAs to userspace.
+1111:   __u64 usermode_mmio_gpu_va; /* out */
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -n "usermode" drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c | head -20
+2816:static void usermode_vma_close(struct vm_area_struct *vma)
+2823:   priv->usermode_vma.vma = NULL;
+2824:   priv->usermode_vma.vma_mapped = false;
+2828:struct vm_operations_struct usermode_vma_ops = {
+2830:   .close = usermode_vma_close,
+2840:   if (g->ops.usermode.base == NULL)
+2843:   if (priv->usermode_vma.vma != NULL)
+2867:   vma->vm_ops = &usermode_vma_ops;
+2871:                   g->usermode_regs_bus_addr >> PAGE_SHIFT,
+2874:           priv->usermode_vma.vma = vma;
+2876:           priv->usermode_vma.vma_mapped = true;
+2885:static int alter_usermode_mapping(struct gk20a *g,
+2889:   struct vm_area_struct *vma = priv->usermode_vma.vma;
+2890:   bool vma_mapped = priv->usermode_vma.vma_mapped;
+2909:    * mmap_lock while holding ctrl_privs_lock. usermode_vma_close
+2929:                   priv->usermode_vma.vma_mapped = false;
+2931:                   nvgpu_err(g, "can't remove usermode mapping");
+2935:                           g->usermode_regs_bus_addr >> PAGE_SHIFT,
+2938:                   nvgpu_err(g, "can't restore usermode mapping");
+2940:                   priv->usermode_vma.vma_mapped = true;
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -n "usermode_regs_bus_addr\|usermode.*base\|usermode.*doorbell" --include="*.c" --include="*.h" -r | head -20
+drivers/gpu/nvgpu/common/mm/gmmu/page_table.c:243:              virtual_func_offset = g->ops.usermode.base(g);
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c:2840:   if (g->ops.usermode.base == NULL)
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c:2871:                   g->usermode_regs_bus_addr >> PAGE_SHIFT,
+drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c:2935:                           g->usermode_regs_bus_addr >> PAGE_SHIFT,
+drivers/gpu/nvgpu/os/linux/linux-channel.c:563: args->work_submit_token = g->ops.usermode.doorbell_token(c);
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -rn "mmap" drivers/gpu/nvgpu/os/linux/ioctl_ctrl.c | head -20
+2833:int gk20a_ctrl_dev_mmap(struct file *filp, struct vm_area_struct *vma)
+2894:           /* Nothing to do - no mmap called */
+2909:    * mmap_lock while holding ctrl_privs_lock. usermode_vma_close
+2913:   if (!down_write_trylock(&vma->vm_mm->mmap_lock)) {
+2915:   if (!down_write_trylock(&vma->vm_mm->mmap_sem)) {
+2945:   up_write(&vma->vm_mm->mmap_lock);
+2947:   up_write(&vma->vm_mm->mmap_sem);
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && grep -rn "doorbell\|NOTIFY\|work_submit\|usermode_reg" --include="*.h" | head -30
+include/uapi/linux/nvgpu.h:1093: * token is passed back to be written in the doorbell register in the usermode
+include/uapi/linux/nvgpu.h:1106:        __u32 work_submit_token; /* out */
+include/uapi/linux/nvgpu.h:1199:#define NVGPU_CHANNEL_GR_ERROR_SW_NOTIFY                13
+include/uapi/linux/nvgpu.h:1202:#define NVGPU_CHANNEL_GR_ILLEGAL_NOTIFY                 25
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu && find . -path "*/hal/*usermode*" -o -path "*/hw/*usermode*" 2>/dev/null
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/l4t-sources/nvgpu]$  cd /home/agent/jetpack-nixos/examples/tinygrad && nix develop --command python3 test_nvgpu.py 2>&1 | tail -80
+    Correctness:    PASS
+
+  === Performance Summary ===
+    WRITE_COMBINE (flags=1): write=0.33ms read=1.43ms ✓
+    CACHEABLE (flags=5): write=0.33ms read=1.44ms ✓
+    UNCACHEABLE (flags=0): write=1.46ms read=13.13ms ✓
+    INNER_CACHEABLE (flags=2): write=0.38ms read=0.09ms ✓
+
+  ✓ Cacheability flags test PASSED
+
+============================================================
+PHASE 3: Command Submission — GPFIFO, QMD, compute dispatch
+============================================================
+
+============================================================
+TEST 12: MMAP USERD + GPFIFO BUFFERS
+============================================================
+  userd mmap:       OK, 4096 bytes, fd=10
+  GPGet:            0
+  GPPut:            0
+  GPFIFO mmap:      OK, 8192 bytes, fd=9
+  GPFIFO non-zero:  0 bytes (should be 0)
+  Doorbell mmap:    OK, ctrl_fd=4, offset 0x90
+
+  ✓ USERD + GPFIFO mmap PASSED
+
+============================================================
+TEST 13: GPFIFO SEMAPHORE RELEASE
+============================================================
+  Semaphore buffer: gpu_va=0x00ffffa01000
+  Push buffer:      10 words (40 bytes)
+  Push buffer VA:   0x00ffffa02000
+  Sem addr:         0x00ffffa01000
+  Expected value:   0x42
+  Waiting for GPU...
+  Semaphore value:  0x42 (match! took 1.1ms)
+
+  ✓ GPFIFO SEMAPHORE RELEASE PASSED
+
+============================================================
+TEST 14: NVRTC SHADER COMPILATION
+============================================================
+  Kernel source:    test_kernel(float *out)
+  Target arch:      sm_87
+  CUBIN size:       2984 bytes
+  .text offset:     0x580
+  .text size:       640 bytes
+  Register count:   16
+  Shared memory:    0 bytes
+  SASS preview:     0c 7c 00 ff 02 00 00 00 70 50 f0 0b 00 da 0f 00
+
+  ✓ NVRTC COMPILATION PASSED
+
+============================================================
+TEST 15: FULL COMPUTE DISPATCH
+============================================================
+  Shader buffer:    gpu_va=0x00ffffa04000, size=8192
+  Program address:  0x00ffffa04580 (.text offset=0x580)
+  Output buffer:    gpu_va=0x00ffffa03000, size=4096
+  Const buffer:     gpu_va=0x00ffffa06000
+  Kernel arg @0x160: output_buf VA = 0x00ffffa03000
+  QMD buffer:       gpu_va=0x00ffffa08000
+  QMD registers:    16
+  QMD shmem:        1024
+  QMD grid:         1x1x1
+  QMD threads:      32x1x1
+  Push buffer:      14 words, gpu_va=0x00ffffa09000
+
+  Submitting to GPFIFO...
+  ✗ TIMEOUT after 5000ms: sem=0x0 (expected 0xdead)
+  GPGet=2, GPPut=2
+
+  ✗ COMPUTE DISPATCH FAILED
+
+============================================================
+Results: 14/15 tests passed
+
+Phase 1+2: PASSED  Phase 3: 3/4 tests passed
+Some tests failed — check errors above
+============================================================
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad]$  dmesg | grep -i "nvgpu\|fault\|mmu\|error\|tegra" | tail -20
+dmesg: read kernel buffer failed: Operation not permitted
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad]$  sudo dmesg | grep -i "nvgpu\|fault\|mmu\|error\|gpu" | tail -30
+[20985.496907] pc : tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[20985.497240] lr : tu104_gr_init_commit_rtv_cb+0x30/0x78 [nvgpu]
+[20985.497624]  tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[20985.497945]  nvgpu_gr_obj_ctx_commit_global_ctx_buffers+0x200/0x24c [nvgpu]
+[20985.498268]  nvgpu_gr_obj_ctx_alloc+0x110/0x38c [nvgpu]
+[20985.498583]  nvgpu_gr_setup_alloc_obj_ctx+0x1d4/0x4e0 [nvgpu]
+[20985.498895]  gk20a_channel_ioctl+0x62c/0x1840 [nvgpu]
+[21144.750071] WARNING: CPU: 1 PID: 91708 at /build/l4t-oot-sources/nvgpu/drivers/gpu/nvgpu/hal/gr/init/gr_init_tu104.c:191 tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21144.750447] Modules linked in: ip6_tables 8021q ip_tables garp mrp stp llc xt_conntrack nf_conntrack nf_defrag_ipv6 nf_defrag_ipv4 ip6t_rpfilter ipt_rpfilter xt_pkttype xt_LOG nf_log_syslog xt_tcpudp nft_compat x_tables nft_counter nf_tables libcrc32c nvgpu(O) snd_soc_tegra186_asrc(O) snd_soc_tegra210_ope(O) snd_soc_tegra210_afc(O) snd_soc_tegra210_admaif(O) snd_soc_tegra210_mixer(O) snd_soc_tegra186_dspk(O) snd_soc_tegra210_mvc(O) snd_soc_tegra186_arad(O) snd_soc_tegra_pcm snd_soc_tegra210_dmic(O) snd_soc_tegra210_adx(O) snd_soc_tegra210_sfc(O) snd_soc_tegra210_amx(O) snd_soc_tegra210_i2s(O) snd_soc_tegra210_ahub(O) tegra210_adma nvvrs_pseq_rtc(O) spidev rtl8822ce(O) snd_soc_tegra_machine_driver(O) snd_soc_tegra_utils(O) nls_iso8859_1 rtk_btusb(O) snd_soc_tegra_audio_graph_card nls_cp437 snd_soc_audio_graph_card crct10dif_ce nvidia(O) btusb snd_soc_simple_card_utils tegra23x_perf_uncore(O) rtw88_8822ce btrtl btintel tegra234_oc_event(O) rtw88_8822c rtw88_pci btbcm rtw88_core ina3221
+[21144.750692] pc : tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21144.751034] lr : tu104_gr_init_commit_rtv_cb+0x30/0x78 [nvgpu]
+[21144.751429]  tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21144.751754]  nvgpu_gr_obj_ctx_commit_global_ctx_buffers+0x200/0x24c [nvgpu]
+[21144.752077]  nvgpu_gr_obj_ctx_alloc+0x110/0x38c [nvgpu]
+[21144.752392]  nvgpu_gr_setup_alloc_obj_ctx+0x1d4/0x4e0 [nvgpu]
+[21144.752703]  gk20a_channel_ioctl+0x62c/0x1840 [nvgpu]
+[21918.577892] WARNING: CPU: 6 PID: 93588 at /build/l4t-oot-sources/nvgpu/drivers/gpu/nvgpu/hal/gr/init/gr_init_tu104.c:191 tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21918.578258] Modules linked in: ip6_tables 8021q ip_tables garp mrp stp llc xt_conntrack nf_conntrack nf_defrag_ipv6 nf_defrag_ipv4 ip6t_rpfilter ipt_rpfilter xt_pkttype xt_LOG nf_log_syslog xt_tcpudp nft_compat x_tables nft_counter nf_tables libcrc32c nvgpu(O) snd_soc_tegra186_asrc(O) snd_soc_tegra210_ope(O) snd_soc_tegra210_afc(O) snd_soc_tegra210_admaif(O) snd_soc_tegra210_mixer(O) snd_soc_tegra186_dspk(O) snd_soc_tegra210_mvc(O) snd_soc_tegra186_arad(O) snd_soc_tegra_pcm snd_soc_tegra210_dmic(O) snd_soc_tegra210_adx(O) snd_soc_tegra210_sfc(O) snd_soc_tegra210_amx(O) snd_soc_tegra210_i2s(O) snd_soc_tegra210_ahub(O) tegra210_adma nvvrs_pseq_rtc(O) spidev rtl8822ce(O) snd_soc_tegra_machine_driver(O) snd_soc_tegra_utils(O) nls_iso8859_1 rtk_btusb(O) snd_soc_tegra_audio_graph_card nls_cp437 snd_soc_audio_graph_card crct10dif_ce nvidia(O) btusb snd_soc_simple_card_utils tegra23x_perf_uncore(O) rtw88_8822ce btrtl btintel tegra234_oc_event(O) rtw88_8822c rtw88_pci btbcm rtw88_core ina3221
+[21918.578501] pc : tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21918.578832] lr : tu104_gr_init_commit_rtv_cb+0x30/0x78 [nvgpu]
+[21918.579212]  tu104_gr_init_commit_rtv_cb+0x68/0x78 [nvgpu]
+[21918.579531]  nvgpu_gr_obj_ctx_commit_global_ctx_buffers+0x200/0x24c [nvgpu]
+[21918.579853]  nvgpu_gr_obj_ctx_alloc+0x110/0x38c [nvgpu]
+[21918.580165]  nvgpu_gr_setup_alloc_obj_ctx+0x1d4/0x4e0 [nvgpu]
+[21918.580473]  gk20a_channel_ioctl+0x62c/0x1840 [nvgpu]
+[21919.687362] nvgpu: 17000000.gpu nvgpu_cic_mon_report_err_safety_services:97   [ERR]  Error reporting is not supported in this platform
+[21919.687372] nvgpu: 17000000.gpu gm20b_gr_intr_check_gr_sked_exception:147  [ERR]  sked exception: esr 0x01000000
+[21919.687375] nvgpu: 17000000.gpu gr_intr_handle_exception_interrupts:759  [ERR]  set gr exception notifier
+[21919.702703] nvgpu: 17000000.gpu              gv11b_ce_halt_engine:170  [ERR]  The CE engine 0 is not idlewhile reset
+[21919.702726] nvgpu: 17000000.gpu              gv11b_ce_halt_engine:170  [ERR]  The CE engine 1 is not idlewhile reset
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad]$ 
+
+
+
+
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad]$  cd /home/agent/jetpack-nixos/examples/tinygrad/tinygrad && grep -n "qmd_v03_00\|QMD_V03\|program_address_lower\|register_count_v\|cta_thread_dimension0\|qmd_major_version\|shared_memory_size\|constant_buffer_addr\|constant_buffer_valid\|barrier_count\|sass_version" tinygrad/runtime/autogen/nv_570.py | head -40
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -ni "program_address_lower\|register_count\|cta_thread_dimension0\|qmd_major_version\|shared_memory_size\|barrier_count\|sass_version\|constant_buffer" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py | head -50
+13109:NVC6C0_QMDV02_03_SHARED_MEMORY_SIZE = (561, 544) # type: ignore
+13113:NVC6C0_QMDV02_03_QMD_MAJOR_VERSION = (583, 580) # type: ignore
+13115:NVC6C0_QMDV02_03_CTA_THREAD_DIMENSION0 = (607, 592) # type: ignore
+13118:NVC6C0_QMDV02_03_CONSTANT_BUFFER_VALID = lambda i: ((640+(i)*1), (640+(i)*1)) # type: ignore
+13119:NVC6C0_QMDV02_03_CONSTANT_BUFFER_VALID_FALSE = 0x00000000 # type: ignore
+13120:NVC6C0_QMDV02_03_CONSTANT_BUFFER_VALID_TRUE = 0x00000001 # type: ignore
+13121:NVC6C0_QMDV02_03_REGISTER_COUNT_V = (656, 648) # type: ignore
+13174:NVC6C0_QMDV02_03_BARRIER_COUNT = (959, 955) # type: ignore
+13176:NVC6C0_QMDV02_03_REGISTER_COUNT = (991, 984) # type: ignore
+13180:NVC6C0_QMDV02_03_SASS_VERSION = (1023, 1016) # type: ignore
+13181:NVC6C0_QMDV02_03_CONSTANT_BUFFER_ADDR_LOWER = lambda i: ((1055+(i)*64), (1024+(i)*64)) # type: ignore
+13182:NVC6C0_QMDV02_03_CONSTANT_BUFFER_ADDR_UPPER = lambda i: ((1072+(i)*64), (1056+(i)*64)) # type: ignore
+13183:NVC6C0_QMDV02_03_CONSTANT_BUFFER_PREFETCH_POST = lambda i: ((1073+(i)*64), (1073+(i)*64)) # type: ignore
+13184:NVC6C0_QMDV02_03_CONSTANT_BUFFER_PREFETCH_POST_FALSE = 0x00000000 # type: ignore
+13185:NVC6C0_QMDV02_03_CONSTANT_BUFFER_PREFETCH_POST_TRUE = 0x00000001 # type: ignore
+13186:NVC6C0_QMDV02_03_CONSTANT_BUFFER_INVALIDATE = lambda i: ((1074+(i)*64), (1074+(i)*64)) # type: ignore
+13187:NVC6C0_QMDV02_03_CONSTANT_BUFFER_INVALIDATE_FALSE = 0x00000000 # type: ignore
+13188:NVC6C0_QMDV02_03_CONSTANT_BUFFER_INVALIDATE_TRUE = 0x00000001 # type: ignore
+13189:NVC6C0_QMDV02_03_CONSTANT_BUFFER_SIZE_SHIFTED4 = lambda i: ((1087+(i)*64), (1075+(i)*64)) # type: ignore
+13190:NVC6C0_QMDV02_03_PROGRAM_ADDRESS_LOWER = (1567, 1536) # type: ignore
+13331:NVC6C0_QMDV02_04_SHARED_MEMORY_SIZE = (561, 544) # type: ignore
+13335:NVC6C0_QMDV02_04_QMD_MAJOR_VERSION = (583, 580) # type: ignore
+13337:NVC6C0_QMDV02_04_CTA_THREAD_DIMENSION0 = (607, 592) # type: ignore
+13340:NVC6C0_QMDV02_04_CONSTANT_BUFFER_VALID = lambda i: ((640+(i)*1), (640+(i)*1)) # type: ignore
+13341:NVC6C0_QMDV02_04_CONSTANT_BUFFER_VALID_FALSE = 0x00000000 # type: ignore
+13342:NVC6C0_QMDV02_04_CONSTANT_BUFFER_VALID_TRUE = 0x00000001 # type: ignore
+13343:NVC6C0_QMDV02_04_REGISTER_COUNT_V = (656, 648) # type: ignore
+13396:NVC6C0_QMDV02_04_BARRIER_COUNT = (959, 955) # type: ignore
+13405:NVC6C0_QMDV02_04_SASS_VERSION = (1023, 1016) # type: ignore
+13406:NVC6C0_QMDV02_04_CONSTANT_BUFFER_ADDR_LOWER = lambda i: ((1055+(i)*64), (1024+(i)*64)) # type: ignore
+13407:NVC6C0_QMDV02_04_CONSTANT_BUFFER_ADDR_UPPER = lambda i: ((1072+(i)*64), (1056+(i)*64)) # type: ignore
+13408:NVC6C0_QMDV02_04_CONSTANT_BUFFER_PREFETCH_POST = lambda i: ((1073+(i)*64), (1073+(i)*64)) # type: ignore
+13409:NVC6C0_QMDV02_04_CONSTANT_BUFFER_PREFETCH_POST_FALSE = 0x00000000 # type: ignore
+13410:NVC6C0_QMDV02_04_CONSTANT_BUFFER_PREFETCH_POST_TRUE = 0x00000001 # type: ignore
+13411:NVC6C0_QMDV02_04_CONSTANT_BUFFER_INVALIDATE = lambda i: ((1074+(i)*64), (1074+(i)*64)) # type: ignore
+13412:NVC6C0_QMDV02_04_CONSTANT_BUFFER_INVALIDATE_FALSE = 0x00000000 # type: ignore
+13413:NVC6C0_QMDV02_04_CONSTANT_BUFFER_INVALIDATE_TRUE = 0x00000001 # type: ignore
+13414:NVC6C0_QMDV02_04_CONSTANT_BUFFER_SIZE_SHIFTED4 = lambda i: ((1087+(i)*64), (1075+(i)*64)) # type: ignore
+13415:NVC6C0_QMDV02_04_PROGRAM_ADDRESS_LOWER = (1567, 1536) # type: ignore
+13551:NVC6C0_QMDV03_00_SHARED_MEMORY_SIZE = (561, 544) # type: ignore
+13557:NVC6C0_QMDV03_00_QMD_MAJOR_VERSION = (583, 580) # type: ignore
+13558:NVC6C0_QMDV03_00_CTA_THREAD_DIMENSION0 = (607, 592) # type: ignore
+13561:NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID = lambda i: ((640+(i)*1), (640+(i)*1)) # type: ignore
+13562:NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_FALSE = 0x00000000 # type: ignore
+13563:NVC6C0_QMDV03_00_CONSTANT_BUFFER_VALID_TRUE = 0x00000001 # type: ignore
+13564:NVC6C0_QMDV03_00_REGISTER_COUNT_V = (656, 648) # type: ignore
+13573:NVC6C0_QMDV03_00_BARRIER_COUNT = (767, 763) # type: ignore
+13648:NVC6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER = lambda i: ((1055+(i)*64), (1024+(i)*64)) # type: ignore
+13649:NVC6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER = lambda i: ((1072+(i)*64), (1056+(i)*64)) # type: ignore
+13650:NVC6C0_QMDV03_00_CONSTANT_BUFFER_PREFETCH_POST = lambda i: ((1073+(i)*64), (1073+(i)*64)) # type: ignore
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "NVC6C0_QMDV03_00" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py | head -100
+13439:NVC6C0_QMDV03_00_OUTER_PUT = (30, 0) # type: ignore
+13440:NVC6C0_QMDV03_00_OUTER_OVERFLOW = (31, 31) # type: ignore
+13441:NVC6C0_QMDV03_00_OUTER_GET = (62, 32) # type: ignore
+13442:NVC6C0_QMDV03_00_OUTER_STICKY_OVERFLOW = (63, 63) # type: ignore
+13443:NVC6C0_QMDV03_00_INNER_GET = (94, 64) # type: ignore
+13444:NVC6C0_QMDV03_00_INNER_OVERFLOW = (95, 95) # type: ignore
+13445:NVC6C0_QMDV03_00_INNER_PUT = (126, 96) # type: ignore
+13446:NVC6C0_QMDV03_00_INNER_STICKY_OVERFLOW = (127, 127) # type: ignore
+13447:NVC6C0_QMDV03_00_QMD_GROUP_ID = (133, 128) # type: ignore
+13448:NVC6C0_QMDV03_00_SM_GLOBAL_CACHING_ENABLE = (134, 134) # type: ignore
+13449:NVC6C0_QMDV03_00_RUN_CTA_IN_ONE_SM_PARTITION = (135, 135) # type: ignore
+13450:NVC6C0_QMDV03_00_RUN_CTA_IN_ONE_SM_PARTITION_FALSE = 0x00000000 # type: ignore
+13451:NVC6C0_QMDV03_00_RUN_CTA_IN_ONE_SM_PARTITION_TRUE = 0x00000001 # type: ignore
+13452:NVC6C0_QMDV03_00_IS_QUEUE = (136, 136) # type: ignore
+13453:NVC6C0_QMDV03_00_IS_QUEUE_FALSE = 0x00000000 # type: ignore
+13454:NVC6C0_QMDV03_00_IS_QUEUE_TRUE = 0x00000001 # type: ignore
+13455:NVC6C0_QMDV03_00_ADD_TO_HEAD_OF_QMD_GROUP_LINKED_LIST = (137, 137) # type: ignore
+13456:NVC6C0_QMDV03_00_ADD_TO_HEAD_OF_QMD_GROUP_LINKED_LIST_FALSE = 0x00000000 # type: ignore
+13457:NVC6C0_QMDV03_00_ADD_TO_HEAD_OF_QMD_GROUP_LINKED_LIST_TRUE = 0x00000001 # type: ignore
+13458:NVC6C0_QMDV03_00_QMD_RESERVED04A = (139, 138) # type: ignore
+13459:NVC6C0_QMDV03_00_REQUIRE_SCHEDULING_PCAS = (140, 140) # type: ignore
+13460:NVC6C0_QMDV03_00_REQUIRE_SCHEDULING_PCAS_FALSE = 0x00000000 # type: ignore
+13461:NVC6C0_QMDV03_00_REQUIRE_SCHEDULING_PCAS_TRUE = 0x00000001 # type: ignore
+13462:NVC6C0_QMDV03_00_QMD_RESERVED04B = (141, 141) # type: ignore
+13463:NVC6C0_QMDV03_00_DEPENDENCE_COUNTER = (157, 142) # type: ignore
+13464:NVC6C0_QMDV03_00_SELF_COPY_ON_COMPLETION = (158, 158) # type: ignore
+13465:NVC6C0_QMDV03_00_SELF_COPY_ON_COMPLETION_FALSE = 0x00000000 # type: ignore
+13466:NVC6C0_QMDV03_00_SELF_COPY_ON_COMPLETION_TRUE = 0x00000001 # type: ignore
+13467:NVC6C0_QMDV03_00_QMD_RESERVED04C = (159, 159) # type: ignore
+13468:NVC6C0_QMDV03_00_CIRCULAR_QUEUE_SIZE = (184, 160) # type: ignore
+13469:NVC6C0_QMDV03_00_DEMOTE_L2_EVICT_LAST = (185, 185) # type: ignore
+13470:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_HEADER_CACHE = (186, 186) # type: ignore
+13471:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_HEADER_CACHE_FALSE = 0x00000000 # type: ignore
+13472:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_HEADER_CACHE_TRUE = 0x00000001 # type: ignore
+13473:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_SAMPLER_CACHE = (187, 187) # type: ignore
+13474:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_SAMPLER_CACHE_FALSE = 0x00000000 # type: ignore
+13475:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_SAMPLER_CACHE_TRUE = 0x00000001 # type: ignore
+13476:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_DATA_CACHE = (188, 188) # type: ignore
+13477:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_DATA_CACHE_FALSE = 0x00000000 # type: ignore
+13478:NVC6C0_QMDV03_00_INVALIDATE_TEXTURE_DATA_CACHE_TRUE = 0x00000001 # type: ignore
+13479:NVC6C0_QMDV03_00_INVALIDATE_SHADER_DATA_CACHE = (189, 189) # type: ignore
+13480:NVC6C0_QMDV03_00_INVALIDATE_SHADER_DATA_CACHE_FALSE = 0x00000000 # type: ignore
+13481:NVC6C0_QMDV03_00_INVALIDATE_SHADER_DATA_CACHE_TRUE = 0x00000001 # type: ignore
+13482:NVC6C0_QMDV03_00_INVALIDATE_INSTRUCTION_CACHE = (190, 190) # type: ignore
+13483:NVC6C0_QMDV03_00_INVALIDATE_INSTRUCTION_CACHE_FALSE = 0x00000000 # type: ignore
+13484:NVC6C0_QMDV03_00_INVALIDATE_INSTRUCTION_CACHE_TRUE = 0x00000001 # type: ignore
+13485:NVC6C0_QMDV03_00_INVALIDATE_SHADER_CONSTANT_CACHE = (191, 191) # type: ignore
+13486:NVC6C0_QMDV03_00_INVALIDATE_SHADER_CONSTANT_CACHE_FALSE = 0x00000000 # type: ignore
+13487:NVC6C0_QMDV03_00_INVALIDATE_SHADER_CONSTANT_CACHE_TRUE = 0x00000001 # type: ignore
+13488:NVC6C0_QMDV03_00_CTA_RASTER_WIDTH_RESUME = (223, 192) # type: ignore
+13489:NVC6C0_QMDV03_00_CTA_RASTER_HEIGHT_RESUME = (239, 224) # type: ignore
+13490:NVC6C0_QMDV03_00_CTA_RASTER_DEPTH_RESUME = (255, 240) # type: ignore
+13491:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_ADDR_LOWER_SHIFTED = (287, 256) # type: ignore
+13492:NVC6C0_QMDV03_00_CIRCULAR_QUEUE_ADDR_LOWER = (319, 288) # type: ignore
+13493:NVC6C0_QMDV03_00_CIRCULAR_QUEUE_ADDR_UPPER = (327, 320) # type: ignore
+13494:NVC6C0_QMDV03_00_QMD_RESERVED_D = (335, 328) # type: ignore
+13495:NVC6C0_QMDV03_00_CIRCULAR_QUEUE_ENTRY_SIZE = (351, 336) # type: ignore
+13496:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_ID = (357, 352) # type: ignore
+13497:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_DELTA_MINUS_ONE = (365, 358) # type: ignore
+13498:NVC6C0_QMDV03_00_QMD_RESERVED11A = (366, 366) # type: ignore
+13499:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_INCR_ENABLE = (367, 367) # type: ignore
+13500:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_INCR_ENABLE_FALSE = 0x00000000 # type: ignore
+13501:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_INCR_ENABLE_TRUE = 0x00000001 # type: ignore
+13502:NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE = (369, 368) # type: ignore
+13503:NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE_L1_NONE = 0x00000000 # type: ignore
+13504:NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE_L1_SYSMEMBAR = 0x00000001 # type: ignore
+13505:NVC6C0_QMDV03_00_CWD_MEMBAR_TYPE_L1_MEMBAR = 0x00000003 # type: ignore
+13506:NVC6C0_QMDV03_00_SEQUENTIALLY_RUN_CTAS = (370, 370) # type: ignore
+13507:NVC6C0_QMDV03_00_SEQUENTIALLY_RUN_CTAS_FALSE = 0x00000000 # type: ignore
+13508:NVC6C0_QMDV03_00_SEQUENTIALLY_RUN_CTAS_TRUE = 0x00000001 # type: ignore
+13509:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_DECR_ENABLE = (371, 371) # type: ignore
+13510:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_DECR_ENABLE_FALSE = 0x00000000 # type: ignore
+13511:NVC6C0_QMDV03_00_CWD_REFERENCE_COUNT_DECR_ENABLE_TRUE = 0x00000001 # type: ignore
+13512:NVC6C0_QMDV03_00_QMD_RESERVED11B = (377, 372) # type: ignore
+13513:NVC6C0_QMDV03_00_API_VISIBLE_CALL_LIMIT = (378, 378) # type: ignore
+13514:NVC6C0_QMDV03_00_API_VISIBLE_CALL_LIMIT__32 = 0x00000000 # type: ignore
+13515:NVC6C0_QMDV03_00_API_VISIBLE_CALL_LIMIT_NO_CHECK = 0x00000001 # type: ignore
+13516:NVC6C0_QMDV03_00_QMD_RESERVED11C = (381, 379) # type: ignore
+13517:NVC6C0_QMDV03_00_SAMPLER_INDEX = (382, 382) # type: ignore
+13518:NVC6C0_QMDV03_00_SAMPLER_INDEX_INDEPENDENTLY = 0x00000000 # type: ignore
+13519:NVC6C0_QMDV03_00_SAMPLER_INDEX_VIA_HEADER_INDEX = 0x00000001 # type: ignore
+13520:NVC6C0_QMDV03_00_DISABLE_AUTO_INVALIDATE = (383, 383) # type: ignore
+13521:NVC6C0_QMDV03_00_DISABLE_AUTO_INVALIDATE_FALSE = 0x00000000 # type: ignore
+13522:NVC6C0_QMDV03_00_DISABLE_AUTO_INVALIDATE_TRUE = 0x00000001 # type: ignore
+13523:NVC6C0_QMDV03_00_CTA_RASTER_WIDTH = (415, 384) # type: ignore
+13524:NVC6C0_QMDV03_00_CTA_RASTER_HEIGHT = (431, 416) # type: ignore
+13525:NVC6C0_QMDV03_00_CTA_RASTER_DEPTH = (463, 448) # type: ignore
+13526:NVC6C0_QMDV03_00_DEPENDENT_QMD0_POINTER = (511, 480) # type: ignore
+13527:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ENABLE = (512, 512) # type: ignore
+13528:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ENABLE_FALSE = 0x00000000 # type: ignore
+13529:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ENABLE_TRUE = 0x00000001 # type: ignore
+13530:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ACTION = (515, 513) # type: ignore
+13531:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ACTION_QMD_INCREMENT_PUT = 0x00000000 # type: ignore
+13532:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ACTION_QMD_SCHEDULE = 0x00000001 # type: ignore
+13533:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ACTION_QMD_INVALIDATE_COPY_SCHEDULE = 0x00000003 # type: ignore
+13534:NVC6C0_QMDV03_00_DEPENDENT_QMD0_ACTION_QMD_DECREMENT_DEPENDENCE = 0x00000004 # type: ignore
+13535:NVC6C0_QMDV03_00_DEPENDENT_QMD0_PREFETCH = (516, 516) # type: ignore
+13536:NVC6C0_QMDV03_00_DEPENDENT_QMD0_PREFETCH_FALSE = 0x00000000 # type: ignore
+13537:NVC6C0_QMDV03_00_DEPENDENT_QMD0_PREFETCH_TRUE = 0x00000001 # type: ignore
+13538:NVC6C0_QMDV03_00_DEPENDENT_QMD1_ENABLE = (517, 517) # type: ignore
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "NVC6C0_QMDV03_00" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py | tail -80
+13635:NVC6C0_QMDV03_00_RELEASE1_NON_BLOCKING_INTR_TYPE = (956, 955) # type: ignore
+13636:NVC6C0_QMDV03_00_RELEASE1_NON_BLOCKING_INTR_TYPE_NONE = 0x00000000 # type: ignore
+13637:NVC6C0_QMDV03_00_RELEASE1_NON_BLOCKING_INTR_TYPE_TRAP = 0x00000001 # type: ignore
+13638:NVC6C0_QMDV03_00_RELEASE1_NON_BLOCKING_INTR_TYPE_CONDITIONAL_TRAP = 0x00000002 # type: ignore
+13639:NVC6C0_QMDV03_00_RELEASE1_PAYLOAD64B = (957, 957) # type: ignore
+13640:NVC6C0_QMDV03_00_RELEASE1_PAYLOAD64B_FALSE = 0x00000000 # type: ignore
+13641:NVC6C0_QMDV03_00_RELEASE1_PAYLOAD64B_TRUE = 0x00000001 # type: ignore
+13642:NVC6C0_QMDV03_00_RELEASE1_STRUCTURE_SIZE = (959, 958) # type: ignore
+13643:NVC6C0_QMDV03_00_RELEASE1_STRUCTURE_SIZE_SEMAPHORE_FOUR_WORDS = 0x00000000 # type: ignore
+13644:NVC6C0_QMDV03_00_RELEASE1_STRUCTURE_SIZE_SEMAPHORE_ONE_WORD = 0x00000001 # type: ignore
+13645:NVC6C0_QMDV03_00_RELEASE1_STRUCTURE_SIZE_SEMAPHORE_TWO_WORDS = 0x00000002 # type: ignore
+13646:NVC6C0_QMDV03_00_RELEASE1_PAYLOAD_LOWER = (991, 960) # type: ignore
+13647:NVC6C0_QMDV03_00_RELEASE1_PAYLOAD_UPPER = (1023, 992) # type: ignore
+13648:NVC6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_LOWER = lambda i: ((1055+(i)*64), (1024+(i)*64)) # type: ignore
+13649:NVC6C0_QMDV03_00_CONSTANT_BUFFER_ADDR_UPPER = lambda i: ((1072+(i)*64), (1056+(i)*64)) # type: ignore
+13650:NVC6C0_QMDV03_00_CONSTANT_BUFFER_PREFETCH_POST = lambda i: ((1073+(i)*64), (1073+(i)*64)) # type: ignore
+13651:NVC6C0_QMDV03_00_CONSTANT_BUFFER_PREFETCH_POST_FALSE = 0x00000000 # type: ignore
+13652:NVC6C0_QMDV03_00_CONSTANT_BUFFER_PREFETCH_POST_TRUE = 0x00000001 # type: ignore
+13653:NVC6C0_QMDV03_00_CONSTANT_BUFFER_INVALIDATE = lambda i: ((1074+(i)*64), (1074+(i)*64)) # type: ignore
+13654:NVC6C0_QMDV03_00_CONSTANT_BUFFER_INVALIDATE_FALSE = 0x00000000 # type: ignore
+13655:NVC6C0_QMDV03_00_CONSTANT_BUFFER_INVALIDATE_TRUE = 0x00000001 # type: ignore
+13656:NVC6C0_QMDV03_00_CONSTANT_BUFFER_SIZE_SHIFTED4 = lambda i: ((1087+(i)*64), (1075+(i)*64)) # type: ignore
+13657:NVC6C0_QMDV03_00_PROGRAM_ADDRESS_LOWER = (1567, 1536) # type: ignore
+13658:NVC6C0_QMDV03_00_PROGRAM_ADDRESS_UPPER = (1584, 1568) # type: ignore
+13659:NVC6C0_QMDV03_00_SHADER_LOCAL_MEMORY_HIGH_SIZE = (1623, 1600) # type: ignore
+13660:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_ADDR_UPPER_SHIFTED = (1640, 1632) # type: ignore
+13661:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_SIZE = (1649, 1641) # type: ignore
+13662:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_TYPE = (1651, 1650) # type: ignore
+13663:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_TYPE_PREFETCH_LAUNCH = 0x00000000 # type: ignore
+13664:NVC6C0_QMDV03_00_PROGRAM_PREFETCH_TYPE_PREFTECH_POST = 0x00000001 # type: ignore
+13665:NVC6C0_QMDV03_00_SASS_VERSION = (1663, 1656) # type: ignore
+13666:NVC6C0_QMDV03_00_RELEASE2_ADDRESS_LOWER = (1695, 1664) # type: ignore
+13667:NVC6C0_QMDV03_00_RELEASE2_ADDRESS_UPPER = (1703, 1696) # type: ignore
+13668:NVC6C0_QMDV03_00_SEMAPHORE_RESERVED53A = (1714, 1704) # type: ignore
+13669:NVC6C0_QMDV03_00_RELEASE2_MEMBAR_TYPE = (1715, 1715) # type: ignore
+13670:NVC6C0_QMDV03_00_RELEASE2_MEMBAR_TYPE_FE_NONE = 0x00000000 # type: ignore
+13671:NVC6C0_QMDV03_00_RELEASE2_MEMBAR_TYPE_FE_SYSMEMBAR = 0x00000001 # type: ignore
+13672:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP = (1718, 1716) # type: ignore
+13673:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_ADD = 0x00000000 # type: ignore
+13674:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_MIN = 0x00000001 # type: ignore
+13675:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_MAX = 0x00000002 # type: ignore
+13676:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_INC = 0x00000003 # type: ignore
+13677:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_DEC = 0x00000004 # type: ignore
+13678:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_AND = 0x00000005 # type: ignore
+13679:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_OR = 0x00000006 # type: ignore
+13680:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_OP_RED_XOR = 0x00000007 # type: ignore
+13681:NVC6C0_QMDV03_00_RELEASE2_ENABLE = (1719, 1719) # type: ignore
+13682:NVC6C0_QMDV03_00_RELEASE2_ENABLE_FALSE = 0x00000000 # type: ignore
+13683:NVC6C0_QMDV03_00_RELEASE2_ENABLE_TRUE = 0x00000001 # type: ignore
+13684:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_FORMAT = (1721, 1720) # type: ignore
+13685:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_FORMAT_UNSIGNED_32 = 0x00000000 # type: ignore
+13686:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_FORMAT_SIGNED_32 = 0x00000001 # type: ignore
+13687:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_ENABLE = (1722, 1722) # type: ignore
+13688:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_ENABLE_FALSE = 0x00000000 # type: ignore
+13689:NVC6C0_QMDV03_00_RELEASE2_REDUCTION_ENABLE_TRUE = 0x00000001 # type: ignore
+13690:NVC6C0_QMDV03_00_RELEASE2_NON_BLOCKING_INTR_TYPE = (1724, 1723) # type: ignore
+13691:NVC6C0_QMDV03_00_RELEASE2_NON_BLOCKING_INTR_TYPE_NONE = 0x00000000 # type: ignore
+13692:NVC6C0_QMDV03_00_RELEASE2_NON_BLOCKING_INTR_TYPE_TRAP = 0x00000001 # type: ignore
+13693:NVC6C0_QMDV03_00_RELEASE2_NON_BLOCKING_INTR_TYPE_CONDITIONAL_TRAP = 0x00000002 # type: ignore
+13694:NVC6C0_QMDV03_00_RELEASE2_PAYLOAD64B = (1725, 1725) # type: ignore
+13695:NVC6C0_QMDV03_00_RELEASE2_PAYLOAD64B_FALSE = 0x00000000 # type: ignore
+13696:NVC6C0_QMDV03_00_RELEASE2_PAYLOAD64B_TRUE = 0x00000001 # type: ignore
+13697:NVC6C0_QMDV03_00_RELEASE2_STRUCTURE_SIZE = (1727, 1726) # type: ignore
+13698:NVC6C0_QMDV03_00_RELEASE2_STRUCTURE_SIZE_SEMAPHORE_FOUR_WORDS = 0x00000000 # type: ignore
+13699:NVC6C0_QMDV03_00_RELEASE2_STRUCTURE_SIZE_SEMAPHORE_ONE_WORD = 0x00000001 # type: ignore
+13700:NVC6C0_QMDV03_00_RELEASE2_STRUCTURE_SIZE_SEMAPHORE_TWO_WORDS = 0x00000002 # type: ignore
+13701:NVC6C0_QMDV03_00_RELEASE2_PAYLOAD_LOWER = (1759, 1728) # type: ignore
+13702:NVC6C0_QMDV03_00_RELEASE2_PAYLOAD_UPPER = (1791, 1760) # type: ignore
+13703:NVC6C0_QMDV03_00_QMD_SPARE_I = (1823, 1792) # type: ignore
+13704:NVC6C0_QMDV03_00_HW_ONLY_INNER_GET = (1854, 1824) # type: ignore
+13705:NVC6C0_QMDV03_00_HW_ONLY_REQUIRE_SCHEDULING_PCAS = (1855, 1855) # type: ignore
+13706:NVC6C0_QMDV03_00_HW_ONLY_INNER_PUT = (1886, 1856) # type: ignore
+13707:NVC6C0_QMDV03_00_HW_ONLY_SPAN_LIST_HEAD_INDEX = (1917, 1888) # type: ignore
+13708:NVC6C0_QMDV03_00_HW_ONLY_SPAN_LIST_HEAD_INDEX_VALID = (1919, 1919) # type: ignore
+13709:NVC6C0_QMDV03_00_HW_ONLY_SPAN_LIST_HEAD_INDEX_VALID_FALSE = 0x00000000 # type: ignore
+13710:NVC6C0_QMDV03_00_HW_ONLY_SPAN_LIST_HEAD_INDEX_VALID_TRUE = 0x00000001 # type: ignore
+13711:NVC6C0_QMDV03_00_HW_ONLY_SKED_NEXT_QMD_POINTER = (1951, 1920) # type: ignore
+13712:NVC6C0_QMDV03_00_HW_ONLY_DEPENDENCE_COUNTER = (1958, 1952) # type: ignore
+13713:NVC6C0_QMDV03_00_DEBUG_ID_UPPER = (2015, 1984) # type: ignore
+13714:NVC6C0_QMDV03_00_DEBUG_ID_LOWER = (2047, 2016) # type: ignore
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "NVC6C0_QMDV03_00.*SHARED_MEM\|NVC6C0_QMDV03_00.*QMD_VERSION\|NVC6C0_QMDV03_00.*REGISTER_COUNT\|NVC6C0_QMDV03_00.*BARRIER\|NVC6C0_QMDV03_00.*SHADER_LOCAL\|NVC6C0_QMDV03_00.*RELEASE0" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py
+13551:NVC6C0_QMDV03_00_SHARED_MEMORY_SIZE = (561, 544) # type: ignore
+13552:NVC6C0_QMDV03_00_MIN_SM_CONFIG_SHARED_MEM_SIZE = (567, 562) # type: ignore
+13554:NVC6C0_QMDV03_00_MAX_SM_CONFIG_SHARED_MEM_SIZE = (574, 569) # type: ignore
+13556:NVC6C0_QMDV03_00_QMD_VERSION = (579, 576) # type: ignore
+13564:NVC6C0_QMDV03_00_REGISTER_COUNT_V = (656, 648) # type: ignore
+13565:NVC6C0_QMDV03_00_TARGET_SM_CONFIG_SHARED_MEM_SIZE = (662, 657) # type: ignore
+13572:NVC6C0_QMDV03_00_SHADER_LOCAL_MEMORY_LOW_SIZE = (759, 736) # type: ignore
+13573:NVC6C0_QMDV03_00_BARRIER_COUNT = (767, 763) # type: ignore
+13574:NVC6C0_QMDV03_00_RELEASE0_ADDRESS_LOWER = (799, 768) # type: ignore
+13575:NVC6C0_QMDV03_00_RELEASE0_ADDRESS_UPPER = (807, 800) # type: ignore
+13577:NVC6C0_QMDV03_00_RELEASE0_MEMBAR_TYPE = (819, 819) # type: ignore
+13578:NVC6C0_QMDV03_00_RELEASE0_MEMBAR_TYPE_FE_NONE = 0x00000000 # type: ignore
+13579:NVC6C0_QMDV03_00_RELEASE0_MEMBAR_TYPE_FE_SYSMEMBAR = 0x00000001 # type: ignore
+13580:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP = (822, 820) # type: ignore
+13581:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_ADD = 0x00000000 # type: ignore
+13582:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_MIN = 0x00000001 # type: ignore
+13583:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_MAX = 0x00000002 # type: ignore
+13584:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_INC = 0x00000003 # type: ignore
+13585:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_DEC = 0x00000004 # type: ignore
+13586:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_AND = 0x00000005 # type: ignore
+13587:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_OR = 0x00000006 # type: ignore
+13588:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_OP_RED_XOR = 0x00000007 # type: ignore
+13589:NVC6C0_QMDV03_00_RELEASE0_ENABLE = (823, 823) # type: ignore
+13590:NVC6C0_QMDV03_00_RELEASE0_ENABLE_FALSE = 0x00000000 # type: ignore
+13591:NVC6C0_QMDV03_00_RELEASE0_ENABLE_TRUE = 0x00000001 # type: ignore
+13592:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_FORMAT = (825, 824) # type: ignore
+13593:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_FORMAT_UNSIGNED_32 = 0x00000000 # type: ignore
+13594:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_FORMAT_SIGNED_32 = 0x00000001 # type: ignore
+13595:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_ENABLE = (826, 826) # type: ignore
+13596:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_ENABLE_FALSE = 0x00000000 # type: ignore
+13597:NVC6C0_QMDV03_00_RELEASE0_REDUCTION_ENABLE_TRUE = 0x00000001 # type: ignore
+13598:NVC6C0_QMDV03_00_RELEASE0_NON_BLOCKING_INTR_TYPE = (828, 827) # type: ignore
+13599:NVC6C0_QMDV03_00_RELEASE0_NON_BLOCKING_INTR_TYPE_NONE = 0x00000000 # type: ignore
+13600:NVC6C0_QMDV03_00_RELEASE0_NON_BLOCKING_INTR_TYPE_TRAP = 0x00000001 # type: ignore
+13601:NVC6C0_QMDV03_00_RELEASE0_NON_BLOCKING_INTR_TYPE_CONDITIONAL_TRAP = 0x00000002 # type: ignore
+13602:NVC6C0_QMDV03_00_RELEASE0_PAYLOAD64B = (829, 829) # type: ignore
+13603:NVC6C0_QMDV03_00_RELEASE0_PAYLOAD64B_FALSE = 0x00000000 # type: ignore
+13604:NVC6C0_QMDV03_00_RELEASE0_PAYLOAD64B_TRUE = 0x00000001 # type: ignore
+13605:NVC6C0_QMDV03_00_RELEASE0_STRUCTURE_SIZE = (831, 830) # type: ignore
+13606:NVC6C0_QMDV03_00_RELEASE0_STRUCTURE_SIZE_SEMAPHORE_FOUR_WORDS = 0x00000000 # type: ignore
+13607:NVC6C0_QMDV03_00_RELEASE0_STRUCTURE_SIZE_SEMAPHORE_ONE_WORD = 0x00000001 # type: ignore
+13608:NVC6C0_QMDV03_00_RELEASE0_STRUCTURE_SIZE_SEMAPHORE_TWO_WORDS = 0x00000002 # type: ignore
+13609:NVC6C0_QMDV03_00_RELEASE0_PAYLOAD_LOWER = (863, 832) # type: ignore
+13610:NVC6C0_QMDV03_00_RELEASE0_PAYLOAD_UPPER = (895, 864) # type: ignore
+13659:NVC6C0_QMDV03_00_SHADER_LOCAL_MEMORY_HIGH_SIZE = (1623, 1600) # type: ignore
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "_update_exec\|qmd_version\|qmd_major_version\|register_count_v\|shared_memory_size\|barrier_count\|program_address\|qmd\.\|shmem_usage" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/ops_nv.py | head -50
+140:    qmd_buf.cpu_view().view(size=prg.qmd.mv.nbytes, fmt='B')[:] = prg.qmd.mv
+145:    self.bind_sints_to_mem(*global_size, mem=qmd_buf.cpu_view(), fmt='I', offset=qmd.field_offset('cta_raster_width' if qmd.ver<4 else 'grid_width'))
+146:    self.bind_sints_to_mem(*(local_size[:2]), mem=qmd_buf.cpu_view(), fmt='H', offset=qmd.field_offset('cta_thread_dimension0'))
+147:    self.bind_sints_to_mem(local_size[2], mem=qmd_buf.cpu_view(), fmt='B', offset=qmd.field_offset('cta_thread_dimension2'))
+148:    qmd.set_constant_buf_addr(0, args_state.buf.va_addr)
+155:      self.active_qmd.write(dependent_qmd0_pointer=qmd_buf.va_addr >> 8, dependent_qmd0_action=1, dependent_qmd0_prefetch=1, dependent_qmd0_enable=1)
+163:        if self.active_qmd.read(f'release{i}_enable') == 0:
+164:          self.active_qmd.write(**{f'release{i}_enable': 1})
+166:          addr_off = self.active_qmd.field_offset(f'release{i}_address_lower' if self.active_qmd.ver<4 else f'release_semaphore{i}_addr_lower')
+170:          val_off = self.active_qmd.field_offset(f'release{i}_payload_lower' if self.active_qmd.ver<4 else f'release_semaphore{i}_payload_lower')
+242:      self.regs_usage, self.shmem_usage, self.lcmem_usage = info.num_gprs, round_up(info.cs.smem_size, 128), round_up(info.slm_size, 16)
+250:      self.regs_usage, self.shmem_usage, self.lcmem_usage, cbuf0_size = 0, 0x400, 0x240, 0 if not MOCKGPU else 0x160
+252:        if sh.name == f".nv.shared.{self.name}": self.shmem_usage = round_up(0x400 + sh.header.sh_size, 128)
+281:      qmd = {'qmd_major_version':5, 'qmd_type':nv_gpu.NVCEC0_QMDV05_00_QMD_TYPE_GRID_CTA, 'program_address_upper_shifted4':hi32(prog_addr>>4),
+282:        'program_address_lower_shifted4':lo32(prog_addr>>4), 'register_count':self.regs_usage, 'shared_memory_size_shifted7':self.shmem_usage>>7,
+286:      qmd = {'qmd_major_version':3, 'sm_global_caching_enable':1, 'program_address_upper':hi32(prog_addr), 'program_address_lower':lo32(prog_addr),
+287:        'shared_memory_size':self.shmem_usage, 'register_count_v':self.regs_usage,
+290:    smem_cfg = min(shmem_conf * 1024 for shmem_conf in [32, 64, 100] if shmem_conf * 1024 >= self.shmem_usage) // 4096 + 1
+293:      invalidate_texture_data_cache=1, invalidate_shader_data_cache=1, api_visible_call_limit=1, sampler_index=1, barrier_count=1,
+299:      self.qmd.set_constant_buf_addr(i, addr)
+300:      self.qmd.write(**{f'constant_buffer_size_shifted4_{i}': sz, f'constant_buffer_valid_{i}': 1})
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "shared_mem_window\|local_mem_window\|slm_per_thread" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/ops_nv.py | head -20
+89:  def setup(self, compute_class=None, copy_class=None, local_mem_window=None, shared_mem_window=None, local_mem=None, local_mem_tpc_bytes=None):
+92:    if local_mem_window: self.nvm(1, nv_gpu.NVC6C0_SET_SHADER_LOCAL_MEMORY_WINDOW_A, *data64(local_mem_window))
+93:    if shared_mem_window: self.nvm(1, nv_gpu.NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A, *data64(shared_mem_window))
+280:      if not NAK: self.cbuf_0[188:192], self.cbuf_0[223] = [*data64_le(self.dev.shared_mem_window), *data64_le(self.dev.local_mem_window)], 0xfffdc0
+283:        'shader_local_memory_high_size_shifted4':self.lcmem_usage>>4 if NAK else self.dev.slm_per_thread>>4}
+285:      if not NAK: self.cbuf_0[6:12] = [*data64_le(self.dev.shared_mem_window), *data64_le(self.dev.local_mem_window), *data64_le(0xfffdc0)]
+288:        **({'shader_local_memory_low_size':self.lcmem_usage} if NAK else {'shader_local_memory_high_size':self.dev.slm_per_thread})}
+316:    if prod(local_size) > 1024 or self.max_threads < prod(local_size) or self.lcmem_usage > cast(NVDevice, self.dev).slm_per_thread:
+671:    self.slm_per_thread, self.shader_local_mem = 0, None
+674:    self.shared_mem_window, self.local_mem_window = 0x729400000000, 0x729300000000
+676:    NVComputeQueue().setup(compute_class=self.iface.compute_class, local_mem_window=self.local_mem_window, shared_mem_window=self.shared_mem_window) \
+686:    if self.slm_per_thread >= required: return
+688:    self.slm_per_thread, old_slm_per_thread = round_up(required, 32), self.slm_per_thread
+689:    bytes_per_tpc = round_up(round_up(self.slm_per_thread * 32, 0x200) * self.max_warps_per_sm * self.num_sm_per_tpc, 0x8000)
+693:    if not ok: self.slm_per_thread = old_slm_per_thread
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "INVALIDATE_SHADER_CACHES\|SET_SHADER_LOCAL_MEMORY_WINDOW\|SET_SHADER_SHARED_MEMORY_WINDOW\|SET_SHADER_LOCAL_MEMORY_A\|SET_SHADER_LOCAL_MEMORY_NON_THROTTLED\|INVALIDATE_SHADER_CACHES_NO_WFI" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py | head -20
+15603:NVC6C0_INVALIDATE_SHADER_CACHES = 0x021c # type: ignore
+15604:NVC6C0_INVALIDATE_SHADER_CACHES_INSTRUCTION = (0, 0) # type: ignore
+15605:NVC6C0_INVALIDATE_SHADER_CACHES_INSTRUCTION_FALSE = 0x00000000 # type: ignore
+15606:NVC6C0_INVALIDATE_SHADER_CACHES_INSTRUCTION_TRUE = 0x00000001 # type: ignore
+15607:NVC6C0_INVALIDATE_SHADER_CACHES_DATA = (4, 4) # type: ignore
+15608:NVC6C0_INVALIDATE_SHADER_CACHES_DATA_FALSE = 0x00000000 # type: ignore
+15609:NVC6C0_INVALIDATE_SHADER_CACHES_DATA_TRUE = 0x00000001 # type: ignore
+15610:NVC6C0_INVALIDATE_SHADER_CACHES_CONSTANT = (12, 12) # type: ignore
+15611:NVC6C0_INVALIDATE_SHADER_CACHES_CONSTANT_FALSE = 0x00000000 # type: ignore
+15612:NVC6C0_INVALIDATE_SHADER_CACHES_CONSTANT_TRUE = 0x00000001 # type: ignore
+15613:NVC6C0_INVALIDATE_SHADER_CACHES_LOCKS = (1, 1) # type: ignore
+15614:NVC6C0_INVALIDATE_SHADER_CACHES_LOCKS_FALSE = 0x00000000 # type: ignore
+15615:NVC6C0_INVALIDATE_SHADER_CACHES_LOCKS_TRUE = 0x00000001 # type: ignore
+15616:NVC6C0_INVALIDATE_SHADER_CACHES_FLUSH_DATA = (2, 2) # type: ignore
+15617:NVC6C0_INVALIDATE_SHADER_CACHES_FLUSH_DATA_FALSE = 0x00000000 # type: ignore
+15618:NVC6C0_INVALIDATE_SHADER_CACHES_FLUSH_DATA_TRUE = 0x00000001 # type: ignore
+15696:NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A = 0x02a0 # type: ignore
+15697:NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A_BASE_ADDRESS_UPPER = (16, 0) # type: ignore
+15698:NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_B = 0x02a4 # type: ignore
+15699:NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_B_BASE_ADDRESS = (31, 0) # type: ignore
+
+[agent@nixos:~/jetpack-nixos/examples/tinygrad/tinygrad]$  grep -n "NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI\|SET_SHADER_LOCAL_MEMORY_WINDOW_A\b\|SET_SHADER_LOCAL_MEMORY_A\b\|SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A\b" /home/agent/jetpack-nixos/examples/tinygrad/tinygrad/tinygrad/runtime/autogen/nv_570.py
+15737:NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A = 0x02e4 # type: ignore
+15784:NVC6C0_SET_SHADER_LOCAL_MEMORY_A = 0x0790 # type: ignore
+15788:NVC6C0_SET_SHADER_LOCAL_MEMORY_WINDOW_A = 0x07b0 # type: ignore
+15856:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI = 0x1698 # type: ignore
+15857:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_INSTRUCTION = (0, 0) # type: ignore
+15858:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_INSTRUCTION_FALSE = 0x00000000 # type: ignore
+15859:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_INSTRUCTION_TRUE = 0x00000001 # type: ignore
+15860:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_GLOBAL_DATA = (4, 4) # type: ignore
+15861:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_GLOBAL_DATA_FALSE = 0x00000000 # type: ignore
+15862:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_GLOBAL_DATA_TRUE = 0x00000001 # type: ignore
+15863:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_CONSTANT = (12, 12) # type: ignore
+15864:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_CONSTANT_FALSE = 0x00000000 # type: ignore
+15865:NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI_CONSTANT_TRUE = 0x00000001 # type: ignore

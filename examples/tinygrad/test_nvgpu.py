@@ -1088,6 +1088,7 @@ def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
     return {
         "tsg_fd": tsg_fd,
         "ch_fd": ch_fd,
+        "ctrl_fd": ctrl_fd,
         "gpfifo_dmabuf_fd": gpfifo_dmabuf_fd,
         "userd_dmabuf_fd": userd_dmabuf_fd,
         "work_submit_token": setup.work_submit_token,
@@ -1506,7 +1507,12 @@ def test_cacheable_flags(nvmap_fd, as_fd):
 NVC6C0_SET_OBJECT       = 0x0000
 NVC6C0_SEND_PCAS_A      = 0x02b4
 NVC6C0_SEND_SIGNALING_PCAS2_B = 0x02c0
-NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI = 0x021c
+NVC6C0_INVALIDATE_SHADER_CACHES     = 0x021c
+NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI = 0x1698
+NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A = 0x02a0  # + 0x02a4 = _B
+NVC6C0_SET_SHADER_LOCAL_MEMORY_WINDOW_A  = 0x07b0  # + 0x07b4 = _B
+NVC6C0_SET_SHADER_LOCAL_MEMORY_A         = 0x0790  # + 0x0794 = _B
+NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A = 0x02e4  # + 0x02e8 = _B, + 0x02ec = _C
 
 # GPFIFO channel methods (subchannel 0)
 NVC56F_SEM_ADDR_LO      = 0x005c
@@ -1883,6 +1889,22 @@ def test_mmap_userd_gpfifo(channel_info, nvmap_fd):
     channel_info['userd_mm'] = userd_mm
     channel_info['gpfifo_mm'] = gpfifo_mm
     
+    # mmap the ctrl fd to get access to the usermode doorbell register.
+    # The kernel's gk20a_ctrl_dev_mmap() maps g->usermode_regs_bus_addr
+    # which is the GPU's usermode register page. The doorbell is at offset 0x90
+    # (NV_USERMODE_NOTIFY_CHANNEL_PENDING). Writing work_submit_token there
+    # notifies the GPU that new GPFIFO entries are available.
+    USERMODE_NOTIFY_OFFSET = 0x90
+    ctrl_fd = channel_info['ctrl_fd']
+    try:
+        doorbell_mm = mmap.mmap(ctrl_fd, 0x1000, mmap.MAP_SHARED,
+                                 mmap.PROT_READ | mmap.PROT_WRITE, 0)
+        channel_info['doorbell_mm'] = doorbell_mm
+        print(f"  Doorbell mmap:    OK, ctrl_fd={ctrl_fd}, offset 0x{USERMODE_NOTIFY_OFFSET:x}")
+    except OSError as e:
+        print(f"  Doorbell mmap:    FAILED ({e})")
+        print(f"  Will fall back to GPPut-only doorbell")
+    
     print(f"\n  ✓ USERD + GPFIFO mmap PASSED")
     return True
 
@@ -1927,21 +1949,13 @@ def submit_pushbuf(channel_info, pushbuf_gpu_va, pushbuf_len_words):
     # Note: mmap.flush() calls msync() which returns EINVAL on DMA-BUF mmaps.
     # IO_COHERENCE means writes are immediately visible to GPU — no flush needed.
     
-    # Ring doorbell: write work_submit_token
-    # On Jetson nvgpu, the doorbell is the SUBMIT_GPFIFO ioctl when GPU_MMIO 
-    # is not available. But since we have USERMODE_SUPPORT, there must be a
-    # mechanism. The kernel returns a work_submit_token which on desktop NV is
-    # written to an MMIO register. On Jetson, the trick is that we can use
-    # the SUBMIT_GPFIFO ioctl with 0 entries to "kick" the channel, OR
-    # the hardware automatically polls GPPut changes.
-    #
-    # Actually — on nvgpu with usermode submit, the kernel sets up the GPU to
-    # poll the userd GPPut register. Writing GPPut IS the doorbell.
-    # The work_submit_token is used with the host1x doorbell register which
-    # the kernel maps at channel init time internally.
-    #
-    # Let's try with just GPPut update first (most likely mechanism for nvgpu),
-    # and if that doesn't work, we'll try SUBMIT_GPFIFO with 0 entries as fallback.
+    # Ring doorbell: write work_submit_token to the usermode MMIO register
+    # at offset 0x90 (NV_USERMODE_NOTIFY_CHANNEL_PENDING).
+    # This is mapped via mmap() on the ctrl fd (gk20a_ctrl_dev_mmap).
+    USERMODE_NOTIFY_OFFSET = 0x90
+    if 'doorbell_mm' in channel_info:
+        doorbell_mm = channel_info['doorbell_mm']
+        struct.pack_into('<I', doorbell_mm, USERMODE_NOTIFY_OFFSET, token)
     
     return new_gp_put
 
@@ -2193,11 +2207,19 @@ def test_compute_dispatch(channel_info, allocator, compute_class, cubin_info):
     # Write kernel args in cbuf0
     # The kernel parameter (float *out) is the output buffer GPU VA
     # CUDA ABI: kernel params start at offset 0x160 in const buffer 0
-    # But for our standalone launch, we need to match what the kernel expects.
-    # The simplest approach: put the pointer at offset 0 of cbuf0
-    # (this matches the basic CUDA calling convention for a single arg)
     for i in range(cbuf_size):
         cbuf_buf.cpu_addr[i] = 0
+    
+    # Write shared_mem_window and local_mem_window at cbuf_0[6:12] (u32 index)
+    # These are required by nvcc-compiled CUDA kernels for addressing
+    # (tinygrad: cbuf_0[6:12] = [*data64_le(shared_mem_window), *data64_le(local_mem_window), *data64_le(0xfffdc0)])
+    shared_mem_window = 0xfe00000000  # within 40-bit range 
+    local_mem_window  = 0xfd00000000  # within 40-bit range
+    struct.pack_into('<Q', cbuf_buf.cpu_addr, 6*4, shared_mem_window)   # cbuf_0[6:8]
+    struct.pack_into('<Q', cbuf_buf.cpu_addr, 8*4, local_mem_window)    # cbuf_0[8:10]
+    struct.pack_into('<Q', cbuf_buf.cpu_addr, 10*4, 0xfffdc0)           # cbuf_0[10:12]
+    
+    # Write kernel parameter (float *out pointer) at offset 0x160
     struct.pack_into('<Q', cbuf_buf.cpu_addr, 0x160, output_buf.gpu_va)
     # IO_COHERENCE: no flush needed
     print(f"  Const buffer:     gpu_va=0x{cbuf_buf.gpu_va:012x}")
@@ -2231,7 +2253,7 @@ def test_compute_dispatch(channel_info, allocator, compute_class, cubin_info):
     qmd = QMDBuilder()
     qmd.write(
         qmd_major_version=3,
-        qmd_version=3,  # v03.00
+        qmd_version=0,  # v03.00
         qmd_group_id=0x3f,
         sm_global_caching_enable=1,
         api_visible_call_limit=1,  # NO_CHECK
@@ -2296,8 +2318,24 @@ def test_compute_dispatch(channel_info, allocator, compute_class, cubin_info):
     # SET_OBJECT for compute (subchannel 1)
     pb.nvm(1, NVC6C0_SET_OBJECT, compute_class)
     
+    # Set shader memory windows (required before compute dispatch).
+    # On Jetson/nvgpu with 40-bit VA space, use addresses within range.
+    # These must be in the upper region of the VA space but below the AS limit.
+    # Using the same values as tinygrad (they work within 48-bit space for desktop,
+    # for Jetson 40-bit we pick addresses that fit).
+    shared_mem_window = 0xfe00000000  # within 40-bit range
+    local_mem_window  = 0xfd00000000  # within 40-bit range
+    pb.nvm(1, NVC6C0_SET_SHADER_SHARED_MEMORY_WINDOW_A,
+           (shared_mem_window >> 32) & 0x1FFFF, shared_mem_window & 0xFFFFFFFF)
+    pb.nvm(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_WINDOW_A,
+           (local_mem_window >> 32) & 0x1FFFF, local_mem_window & 0xFFFFFFFF)
+    
+    # Set local memory to null (no local mem for this kernel)
+    pb.nvm(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_A, 0, 0)  # null address
+    pb.nvm(1, NVC6C0_SET_SHADER_LOCAL_MEMORY_NON_THROTTLED_A, 0, 0, 0x100)  # limit=0x100
+    
     # Invalidate shader caches (clean state)
-    pb.nvm(1, NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI, 0x17)  # inst + global + const + data + uniform
+    pb.nvm(1, NVC6C0_INVALIDATE_SHADER_CACHES, 0x1011)  # inst + data + const
     
     # SEND_PCAS_A: launch the QMD
     pb.nvm(1, NVC6C0_SEND_PCAS_A, qmd_buf.gpu_va >> 8)

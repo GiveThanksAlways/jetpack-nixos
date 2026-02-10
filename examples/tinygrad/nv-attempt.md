@@ -324,7 +324,6 @@ Write a new tinygrad backend (`TegraIface`) that uses the nvgpu/nvmap ioctls dir
 5. **Command submission** — replace RM GPFIFO submit with usermode submit
 6. **Add detection** — check for `/dev/nvgpu/igpu0/ctrl` in `_select_iface()`
 7. **Test incrementally** — vector add -> matmul -> conv2d -> GPT-2
-8. **Upstream to tinygrad** — PR with Jetson testing
 
 **Key info:** tinygrad's NV backend (ops_nv.py) already has Ampere QMD formatting, push buffer construction, and shader compilation via PTX. TegraIface only needs to replace the _driver layer_ (how memory is allocated and how commands are submitted), NOT the _GPU programming layer_ (QMD format, shader ISA, class methods).
 
