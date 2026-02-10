@@ -88,7 +88,6 @@ Found in `nvgpu/os/linux/linux-channel.c` line 518-524:
 - [x] Test: 1024x1024 matmul (~65 GFLOPS)
 - [ ] Test: GPT-2 end-to-end
 - [ ] Compare outputs with CUDA backend for correctness
-- [ ] Upstream PR to tinygrad
 
 ## Crash Investigation Timeline
 
