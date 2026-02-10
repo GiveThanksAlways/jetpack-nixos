@@ -1,6 +1,6 @@
-# Agent Prompts for Parallel Phase Execution
+# Agent Prompts for Sequential Phase Execution
 
-These prompts are designed for three parallel agents, each working on one phase of the Jetson Orin nvgpu/nvmap backend for tinygrad.
+These prompts are designed for three agents run sequentially (2 → 3 → 4), each building on the previous phase's output.
 
 **Context files to include for ALL agents:** `nv-attempt.md`, `Learning-Phase1.md`, `phase1.md`, `test_nvgpu.py`
 
@@ -61,6 +61,10 @@ Prove that CPU<->GPU shared memory works end-to-end on the Jetson Orin using nvm
 - phase2.md is updated with complete findings
 - You should end with something like "9/9 tests pass" (7 existing + at least 2 new)
 
+## Progress Tracking
+
+Keep the existing `Results: X/Y tests passed` summary at the end of main(). Add your new tests incrementally so every run prints a running score (e.g. "8/9 tests passed" → "9/9 tests passed"). This makes progress visible at a glance.
+
 ## Key Pitfall Warnings (learned from Phase 1)
 
 - Struct sizes MUST match the kernel exactly. Use ctypes.sizeof() to verify.
@@ -68,6 +72,10 @@ Prove that CPU<->GPU shared memory works end-to-end on the Jetson Orin using nvm
 - If an ioctl returns EINVAL, read the kernel source (l4t-sources/) to find the exact validation check.
 - The nvmap handle vs dmabuf fd distinction matters: handle is for nvmap ioctls, dmabuf fd is for mmap and for passing to nvgpu (MAP_BUFFER_EX).
 - Always close fds and clean up handles to avoid resource leaks that cause later tests to fail.
+
+## Final Deliverable: Learning Document
+
+When you are done with Phase 2, write a `Learning-Phase2.md` that teaches the reader how things work — the linear history/iteration of how you discovered things, what broke, what surprised you, and the key concepts. Follow the same spirit as `Learning-Phase1.md`: chronological, honest about mistakes, with diagrams and code snippets that explain the "why" not just the "what."
 
 Good Luck and God Speed
 ```
@@ -79,7 +87,7 @@ Good Luck and God Speed
 **Additional context files:** `phase3.md`, and also include `phase2.md` (Agent 3 depends on Phase 2's allocator)
 
 ```
-You are continuing a multi-phase project to build a tinygrad NV backend ("TegraIface") for the NVIDIA Jetson Orin AGX 64GB. Phase 1 (ioctl reverse-engineering) is COMPLETE with 7/7 tests passing. Phase 2 (memory management) is being worked on in parallel by another agent. Your job is Phase 3: Command Submission.
+You are continuing a multi-phase project to build a tinygrad NV backend ("TegraIface") for the NVIDIA Jetson Orin AGX 64GB. Phase 1 (ioctl reverse-engineering) is COMPLETE with 7/7 tests passing. Phase 2 (memory management) should already be complete — its TegraAllocator class and mmap tests are in test_nvgpu.py. Your job is Phase 3: Command Submission.
 
 ## Your Goal
 
@@ -196,6 +204,10 @@ After ringing the doorbell, poll the syncpoint to detect completion:
 - Syncpoint-based completion detection works
 - phase3.md is updated with the exact push buffer format, QMD fields used, doorbell mechanism, and any discoveries
 
+## Progress Tracking
+
+Keep the existing `Results: X/Y tests passed` summary at the end of main(). Add your tests incrementally — for example: test 8 = mmap userd, test 9 = GPFIFO NOP push, test 10 = shader compile, test 11 = full compute dispatch + verify. Every run should print a running score like "9/11 tests passed" so progress is visible at a glance.
+
 ## Key Pitfall Warnings
 
 - The userd and GPFIFO buffers were ALREADY allocated in Phase 1's `test_full_channel_setup()`. You need their dmabuf_fds to mmap them. Either save them from Phase 1's setup or re-extract them.
@@ -207,6 +219,10 @@ After ringing the doorbell, poll the syncpoint to detect completion:
 - If the GPU hangs or the channel gets stuck, you may need to tear down and recreate the channel. The watchdog is disabled (from Phase 1), so hangs won't auto-recover.
 - If you get stuck on the doorbell mechanism, strace a simple CUDA program to see exactly what memory location it writes and what value: `strace -e trace=write,writev,ioctl -f python3 -c "import cuda; ..."`
 
+## Final Deliverable: Learning Document
+
+When you are done with Phase 3, write a `Learning-Phase3.md` that teaches the reader how things work — the linear history/iteration of how you discovered things, what broke, what surprised you, and the key concepts. Follow the same spirit as `Learning-Phase1.md`: chronological, honest about mistakes, with diagrams and code snippets that explain the "why" not just the "what."
+
 Good Luck and God Speed
 ```
 
@@ -217,7 +233,7 @@ Good Luck and God Speed
 **Additional context files:** `phase4.md`, tinygrad's `ops_nv.py` (critical!), and `tinygrad/tinygrad/runtime/support/hcq.py`
 
 ```
-You are continuing a multi-phase project to build a tinygrad NV backend ("TegraIface") for the NVIDIA Jetson Orin AGX 64GB. Phase 1 (ioctl reverse-engineering), Phase 2 (memory management), and Phase 3 (command submission) are being completed by other agents in parallel. Your job is Phase 4: TegraIface Integration — building the actual tinygrad backend class.
+You are continuing a multi-phase project to build a tinygrad NV backend ("TegraIface") for the NVIDIA Jetson Orin AGX 64GB. Phase 1 (ioctl reverse-engineering), Phase 2 (memory management), and Phase 3 (command submission) are COMPLETE. Their results are in test_nvgpu.py, phase2.md, and phase3.md. Your job is Phase 4: TegraIface Integration — building the actual tinygrad backend class.
 
 ## Your Goal
 
@@ -372,6 +388,19 @@ Use a handle counter + dictionary to map fake handles → nvgpu state (fds, etc)
 - TegraIface is a clean, maintainable class in ops_nv.py
 - phase4.md updated with architecture decisions and test results
 
+## Progress Tracking
+
+Build incrementally and test at each step. Good milestones to print/confirm:
+1. `TegraIface.__init__` succeeds (device detected)
+2. `rm_alloc(NV01_DEVICE_0)` returns without error
+3. `alloc()` returns a valid HCQBuffer
+4. Channel setup completes
+5. `Tensor([1,2,3])` creates without crash
+6. `.numpy()` returns correct values
+7. Tensor add works
+8. Matmul works
+Log each milestone so progress is visible.
+
 ## Key Pitfall Warnings
 
 - **Don't modify the GPU programming layer** (NVComputeQueue, NVCopyQueue, QMD format). ga10b uses IDENTICAL Ampere class methods as desktop. Only the DRIVER layer differs.
@@ -381,6 +410,10 @@ Use a handle counter + dictionary to map fake handles → nvgpu state (fds, etc)
 - **The gpfifo_area allocation** in NVDevice is 0x300000 bytes with `force_devmem=True` and WC mapping. TegraIface.alloc() must handle the `force_devmem` kwarg (just allocate normally since Tegra has no separate VRAM).
 - **sm_version:** NVKIface gets this via RM control calls (NV2080_CTRL_CMD_GR_GET_INFO). TegraIface must return it from GET_CHARACTERISTICS: `sm_arch_sm_version=0x807` → this is already in the right format for tinygrad.
 - **The `_query_gpu_info` method** in NVDevice asks for `num_gpcs`, `num_tpc_per_gpc`, `num_sm_per_tpc`, `max_warps_per_sm`, `sm_version` via rm_control. TegraIface must return these from GET_CHARACTERISTICS or other nvgpu ioctls.
+
+## Final Deliverable: Learning Document
+
+When you are done with Phase 4, write a `Learning-Phase4.md` that teaches the reader how things work — the linear history/iteration of how you discovered things, what broke, what surprised you, and the key concepts. Follow the same spirit as `Learning-Phase1.md`: chronological, honest about mistakes, with diagrams and code snippets that explain the "why" not just the "what."
 
 Good Luck and God Speed
 ```
