@@ -51,6 +51,7 @@
           ps.tqdm
           ps.requests
           ps.pillow
+          ps.tiktoken  # for GPT-2 tokenization
         ]);
       in
       {
@@ -67,16 +68,21 @@
           CC = "${pkgs.clang}/bin/clang";
           CXX = "${pkgs.clang}/bin/clang++";
 
-          # tinygrad uses its own library finder (DLL.findlib) that searches hardcoded
-          # FHS paths (/usr/lib, /lib64, etc.) which don't exist on NixOS.
+          # tinygrad uses its own library finder (DLL.findlib in runtime/support/c.py)
+          # that searches hardcoded FHS paths (/usr/lib, /lib64, etc.) which don't exist on NixOS.
           # It checks <NAME>_PATH env vars first, so we point those directly at the .so files.
-          # lib.getLib returns the `lib` output if it exists, otherwise the default output.
+          # See: grep -rn 'c.DLL' tinygrad/runtime/ for the full list of libraries.
+          #
+          # CUDA backend libs (required):
           CUDA_PATH = "${jetpack.l4t-cuda}/lib/libcuda.so.1";
           NVRTC_PATH = "${pkgs.lib.getLib cuda.cuda_nvrtc}/lib/libnvrtc.so";
           NVJITLINK_PATH = "${pkgs.lib.getLib cuda.libnvjitlink}/lib/libnvJitLink.so";
+          # System libs (tinygrad loads libc via ctypes for io_uring/mmap/etc.):
+          LIBC_PATH = "${pkgs.glibc}/lib/libc.so.6";
 
           # LD_LIBRARY_PATH is still needed so the dynamic linker can resolve
           # transitive dependencies (e.g. libcudart, libcublas, libstdc++).
+          # Also includes glibc so tinygrad's CPU backend can find libgcc_s.so.1.
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
             (pkgs.lib.getLib cuda.cuda_cudart)   # libcudart.so
             (pkgs.lib.getLib cuda.libcublas)      # libcublas.so
@@ -93,6 +99,10 @@
           ];
 
           shellHook = ''
+            # Add nested tinygrad folder to PYTHONPATH so 'extra' module can be found
+            # This allows 'from extra.bench_log import ...' to work in tinygrad examples
+            export PYTHONPATH="$PWD/tinygrad:$PYTHONPATH"
+            
             echo ""
             echo "=== tinygrad dev shell (Orin AGX / CUDA 12.6) ==="
             echo ""
@@ -102,9 +112,11 @@
             echo "Quick test (CUDA):"
             echo "  CUDA=1 python3 -c 'from tinygrad import Tensor; print(Tensor([1,2,3]).numpy())'"
             echo ""
-            echo "LLM examples (need to clone tinygrad repo for examples):"
-            echo "  git clone --depth 1 https://github.com/tinygrad/tinygrad.git tinygrad-examples"
-            echo "  CUDA=1 python3 tinygrad-examples/examples/gpt2.py --count 20"
+            echo "LLM examples (clone tinygrad repo first):"
+            echo "  git clone --depth 1 https://github.com/tinygrad/tinygrad.git"
+            echo "  cd tinygrad && CUDA=1 python3 examples/gpt2.py --count 20"
+            echo ""
+            echo "PYTHONPATH includes $PWD/tinygrad for the 'extra' module."
             echo ""
           '';
         };
