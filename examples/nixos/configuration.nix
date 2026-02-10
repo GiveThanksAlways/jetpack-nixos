@@ -143,6 +143,7 @@
   environment.systemPackages = with pkgs; [
     vim
     git
+    file
   ];
 
   # Some programs need SUID wrappers, can be configured further or are

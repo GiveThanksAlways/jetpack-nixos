@@ -120,6 +120,20 @@
             echo ""
           '';
         };
+
+        devShells.detective = pkgs.mkShell {
+          packages = with pkgs; [
+            binutils  # objdump, etc.
+            gcc
+            git
+            wget
+            unzip
+            gnumake
+            ctags  # For source navigation
+            strace  # For ioctl tracing
+            gdb
+          ];
+        };
       }
     );
 }

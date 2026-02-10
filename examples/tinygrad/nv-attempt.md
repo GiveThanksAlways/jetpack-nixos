@@ -208,7 +208,7 @@ Write a new tinygrad backend that uses the nvgpu/nvhost/nvmap ioctls directly. T
 **Iteration loop:**
 
 1. **Map the ioctl interface**
-   - Study the nvgpu kernel source in [NVIDIA's L4T kernel](https://developer.nvidia.com/embedded/jetson-linux)
+   - Study the nvgpu kernel source in [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)
    - Key files: `drivers/gpu/nvgpu/os/linux/ioctl*.c`
    - Document every ioctl code, struct, and behavior for:
      - `/dev/nvhost-ctrl-gpu` — GPU properties, capabilities, SM version
@@ -305,16 +305,6 @@ Try to use the partial RM API (which does work for root alloc + card info) combi
 
 ---
 
-### Option C: Wait for Platform Changes (Easiest, No Code)
-
-- **JetPack 7 on Orin:** Not planned by NVIDIA. Orin is limited to JetPack 5/6.
-- **Thor AGX + JetPack 7:** Would have `nvidia-uvm` and full RM. NV backend should work with minimal changes.
-- **Upstream tinygrad nvgpu support:** Watch tinygrad issues/PRs for Jetson support.
-
-**Difficulty:** Zero effort, but depends on external factors.
-
----
-
 ### Recommended Path
 
 For **production use today**: stick with `CUDA=1`. It works, it's stable, NVIDIA supports it.
@@ -327,8 +317,17 @@ For **research/hacking**: Option A (nvgpu backend) is the most promising. Start 
 ### Key Resources
 
 - [NVIDIA L4T kernel source](https://developer.nvidia.com/embedded/jetson-linux) — contains full nvgpu driver
+- [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)
 - [open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules) — desktop RM source (for comparison)
 - `/dev/nvhost-*` and `/dev/nvmap` — the actual Tegra GPU interfaces
 - `tinygrad/runtime/ops_nv.py` — NVKIface and PCIIface implementations
 - `jetpack-nixos/modules/default.nix` line 283 — confirms nvidia-uvm is JetPack 7 only
 - `nvidia-smi` shows GPU as "Orin (nvgpu)" — confirming nvgpu is the real driver
+
+### NVIDIA Jetson Linux 36.4.4 (cat /etc/nv_tegra_release)
+[Drivers	Driver Package (BSP)](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.4/release/Jetson_Linux_r36.4.4_aarch64.tbz2)
+[Sample Root Filesystem](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.4/release/Tegra_Linux_Sample-Root-Filesystem_r36.4.4_aarch64.tbz2)
+[Jetson Linux API Reference](https://developer.nvidia.com/embedded/L4T/r36_release_v4.4/Release/Jetson_Multimedia_API_r36.4.4_aarch64.tbz2)
+[Sources	Driver Package (BSP) Sources](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.4/sources/public_sources.tbz2)
+[Sample Root Filesystem Sources](https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.4/sources/ubuntu_jammy-l4t_aarch64_src.tbz2)
+[Fix memory leak  when importing an external memory handle through IPC.](https://developer.nvidia.com/downloads/embedded/L4T/r36_Release_v4.4/cuda_driver_36.4.4.tbz2)
