@@ -277,6 +277,188 @@ NVMAP_IOC_GET_AVAILABLE_HEAPS = _IOR('N', 25, ctypes.sizeof(nvmap_available_heap
 
 
 # ============================================================================
+# Address Space structs & ioctls (Magic 'A' = 0x41)
+# ============================================================================
+
+class nvgpu_alloc_as_args(ctypes.Structure):
+    """ALLOC_AS: create an address space. Returns AS fd."""
+    _fields_ = [
+        ("big_page_size", c_uint32),  # in: 0 = use default
+        ("as_fd",         c_int32),   # out: fd for the new AS
+        ("flags",         c_uint32),
+        ("reserved",      c_uint32),
+        ("va_range_start", c_uint64),
+        ("va_range_end",   c_uint64),
+        ("va_range_split", c_uint64),
+        ("padding",       c_uint32 * 6),
+    ]
+
+NVGPU_GPU_IOCTL_ALLOC_AS = _IOWR('G', 8, ctypes.sizeof(nvgpu_alloc_as_args))
+
+class nvgpu_as_bind_channel_args(ctypes.Structure):
+    _fields_ = [
+        ("channel_fd", c_uint32),
+    ]
+
+NVGPU_AS_IOCTL_BIND_CHANNEL = _IOWR('A', 1, ctypes.sizeof(nvgpu_as_bind_channel_args))
+
+class nvgpu_as_alloc_space_args(ctypes.Structure):
+    """Allocate VA space region."""
+    _fields_ = [
+        ("pages",     c_uint64),
+        ("page_size", c_uint32),
+        ("flags",     c_uint32),
+        ("offset",    c_uint64),  # in/out: if FIXED_OFFSET, use this; else alignment
+        ("padding",   c_uint32 * 2),
+    ]
+
+NVGPU_AS_IOCTL_ALLOC_SPACE = _IOWR('A', 6, ctypes.sizeof(nvgpu_as_alloc_space_args))
+
+class nvgpu_as_map_buffer_ex_args(ctypes.Structure):
+    """Map a dmabuf into the GPU address space."""
+    _fields_ = [
+        ("flags",          c_uint32),
+        ("compr_kind",     c_int16),
+        ("incompr_kind",   c_int16),
+        ("dmabuf_fd",      c_uint32),
+        ("page_size",      c_uint32),
+        ("buffer_offset",  c_uint64),
+        ("mapping_size",   c_uint64),
+        ("offset",         c_uint64),  # in/out: GPU VA
+    ]
+
+NVGPU_AS_IOCTL_MAP_BUFFER_EX = _IOWR('A', 7, ctypes.sizeof(nvgpu_as_map_buffer_ex_args))
+
+class nvgpu_as_get_va_regions_args(ctypes.Structure):
+    """Query VA region layout."""
+    _fields_ = [
+        ("buf_addr", c_uint64),
+        ("buf_size", c_uint32),
+        ("reserved", c_uint32),
+    ]
+
+NVGPU_AS_IOCTL_GET_VA_REGIONS = _IOWR('A', 8, ctypes.sizeof(nvgpu_as_get_va_regions_args))
+
+
+# ============================================================================
+# TSG structs & ioctls (Magic 'T' = 0x54)
+# ============================================================================
+
+class nvgpu_gpu_open_tsg_args(ctypes.Structure):
+    """OPEN_TSG: create a TSG, returns TSG fd."""
+    _fields_ = [
+        ("tsg_fd",   c_int32),
+        ("flags",    c_uint32),
+        ("token",    c_uint32),   # for sharing
+        ("reserved", c_uint32),
+        ("subctx_id", c_uint32),
+        ("_pad",     c_uint32),
+    ]
+
+NVGPU_GPU_IOCTL_OPEN_TSG = _IOWR('G', 9, ctypes.sizeof(nvgpu_gpu_open_tsg_args))
+
+class nvgpu_tsg_bind_channel_ex_args(ctypes.Structure):
+    """Bind a channel to a TSG."""
+    _fields_ = [
+        ("channel_fd",  c_int32),
+        ("padding",     c_uint32),
+        ("subctx_id",   c_uint64),
+        ("num_active_channels", c_uint32),     
+        ("_pad",        c_uint32),
+    ]
+
+NVGPU_TSG_IOCTL_BIND_CHANNEL_EX = _IOWR('T', 11, ctypes.sizeof(nvgpu_tsg_bind_channel_ex_args))
+
+class nvgpu_tsg_create_subcontext_args(ctypes.Structure):
+    """Create a subcontext within a TSG."""
+    _fields_ = [
+        ("subctx_id", c_uint64),  # out: new subcontext ID
+        ("_pad",      c_uint64),
+    ]
+
+NVGPU_TSG_IOCTL_CREATE_SUBCONTEXT = _IOWR('T', 18, ctypes.sizeof(nvgpu_tsg_create_subcontext_args))
+
+
+# ============================================================================
+# Channel structs & ioctls (Magic 'H' = 0x48)
+# ============================================================================
+
+class nvgpu_gpu_open_channel_args(ctypes.Structure):
+    """OPEN_CHANNEL: create a channel, returns channel fd."""
+    _fields_ = [
+        ("channel_fd", c_int32),
+        ("padding",    c_uint32),
+        ("runlist_id", c_int64),  # -1 = auto
+    ]
+
+NVGPU_GPU_IOCTL_OPEN_CHANNEL = _IOWR('G', 11, ctypes.sizeof(nvgpu_gpu_open_channel_args))
+
+# NVGPU_IOCTL_MAGIC for channel ioctls = 'H'
+
+class nvgpu_alloc_obj_ctx_args(ctypes.Structure):
+    """Allocate a class object on a channel (e.g. compute class)."""
+    _fields_ = [
+        ("class_num", c_uint32),   # in: class to allocate (e.g. 0xc7c0 for compute)
+        ("flags",     c_uint32),
+        ("obj_id",    c_uint64),   # out: object handle
+    ]
+
+NVGPU_IOCTL_CHANNEL_ALLOC_OBJ_CTX = _IOWR('H', 108, ctypes.sizeof(nvgpu_alloc_obj_ctx_args))
+
+class nvgpu_channel_setup_bind_args(ctypes.Structure):
+    """Setup GPFIFO + userd binding with usermode submit support."""
+    _fields_ = [
+        ("num_gpfifo_entries",  c_uint32),
+        ("num_inflight_jobs",   c_uint32),
+        ("flags",               c_uint32),
+        ("userd_dmabuf_fd",     c_int32),
+        ("gpfifo_dmabuf_fd",    c_int32),
+        ("work_submit_token",   c_uint32),  # out: token for usermode submit
+        ("userd_dmabuf_offset", c_uint64),   # in
+        ("gpfifo_dmabuf_offset", c_uint64),  # in
+        ("gpfifo_gpu_va",       c_uint64),   # out
+        ("userd_gpu_va",        c_uint64),   # out
+        ("usermode_mmio_gpu_va", c_uint64),  # out
+        ("reserved",            c_uint32 * 9),
+    ]
+
+NVGPU_IOCTL_CHANNEL_SETUP_BIND = _IOWR('H', 128, ctypes.sizeof(nvgpu_channel_setup_bind_args))
+
+# SETUP_BIND flags
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_SUPPORT_VPR          = (1 << 0)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_SUPPORT_DETERMINISTIC = (1 << 1)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_REPLAYABLE_FAULTS_ENABLE = (1 << 2)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_SUPPORT     = (1 << 3)
+
+class nvgpu_set_error_notifier(ctypes.Structure):
+    _fields_ = [
+        ("offset", c_uint64),
+        ("size",   c_uint64),
+        ("mem",    c_uint32),
+        ("_pad",   c_uint32),
+    ]
+
+NVGPU_IOCTL_CHANNEL_SET_ERROR_NOTIFIER = _IOWR('H', 111, ctypes.sizeof(nvgpu_set_error_notifier))
+
+class nvgpu_channel_wdt_args(ctypes.Structure):
+    _fields_ = [
+        ("wdt_status", c_uint32),
+        ("timeout_ms", c_uint32),
+    ]
+
+NVGPU_IOCTL_CHANNEL_WDT = _IOW('H', 119, ctypes.sizeof(nvgpu_channel_wdt_args))
+
+class nvgpu_get_user_syncpoint_args(ctypes.Structure):
+    _fields_ = [
+        ("syncpoint_id",    c_uint32),
+        ("syncpoint_value", c_uint32),
+        ("gpu_va",          c_uint64),
+    ]
+
+NVGPU_IOCTL_CHANNEL_GET_USER_SYNCPOINT = _IOR('H', 126, ctypes.sizeof(nvgpu_get_user_syncpoint_args))
+
+
+# ============================================================================
 # Test functions
 # ============================================================================
 
@@ -448,6 +630,184 @@ def test_nvmap_create_alloc(nvmap_fd, size=4096):
     raise RuntimeError("All heap options failed")
 
 
+def test_alloc_as(ctrl_fd):
+    """Create a GPU address space."""
+    print("\n=== ALLOC_AS (create address space) ===")
+    args = nvgpu_alloc_as_args()
+    args.big_page_size = 0  # use default
+    args.flags = 0
+    args.va_range_start = 0
+    args.va_range_end = 0
+    args.va_range_split = 0
+    nv_ioctl(ctrl_fd, NVGPU_GPU_IOCTL_ALLOC_AS, args)
+    print(f"  AS fd:            {args.as_fd}")
+    return args.as_fd
+
+
+def test_map_buffer(as_fd, dmabuf_fd, size=4096):
+    """Map a dmabuf into the GPU address space."""
+    print(f"\n=== MAP_BUFFER_EX (map {size} bytes into GPU VA) ===")
+    args = nvgpu_as_map_buffer_ex_args()
+    args.flags = 0  # let kernel choose address
+    args.compr_kind = -1   # NV_KIND_INVALID
+    args.incompr_kind = 0  # pitch linear
+    args.dmabuf_fd = dmabuf_fd
+    args.page_size = 4096
+    args.buffer_offset = 0
+    args.mapping_size = 0  # 0 = whole buffer
+    args.offset = 0        # kernel picks address
+    nv_ioctl(as_fd, NVGPU_AS_IOCTL_MAP_BUFFER_EX, args)
+    gpu_va = args.offset
+    print(f"  GPU VA:           0x{gpu_va:012x}")
+    return gpu_va
+
+
+def test_open_tsg(ctrl_fd):
+    """Create a TSG."""
+    print("\n=== OPEN_TSG ===")
+    args = nvgpu_gpu_open_tsg_args()
+    args.flags = 0
+    args.token = 0
+    nv_ioctl(ctrl_fd, NVGPU_GPU_IOCTL_OPEN_TSG, args)
+    print(f"  TSG fd:           {args.tsg_fd}")
+    return args.tsg_fd
+
+
+def test_open_channel(ctrl_fd):
+    """Create a channel."""
+    print("\n=== OPEN_CHANNEL ===")
+    args = nvgpu_gpu_open_channel_args()
+    args.runlist_id = -1  # auto
+    nv_ioctl(ctrl_fd, NVGPU_GPU_IOCTL_OPEN_CHANNEL, args)
+    print(f"  Channel fd:       {args.channel_fd}")
+    return args.channel_fd
+
+
+def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
+    """Full channel setup: TSG → channel → bind → compute class."""
+    print("\n" + "=" * 60)
+    print("FULL CHANNEL + COMPUTE SETUP")
+    print("=" * 60)
+
+    # 1. Open TSG
+    tsg_fd = test_open_tsg(ctrl_fd)
+
+    # 2. Create subcontext in TSG
+    print("\n=== CREATE_SUBCONTEXT ===")
+    subctx = nvgpu_tsg_create_subcontext_args()
+    nv_ioctl(tsg_fd, NVGPU_TSG_IOCTL_CREATE_SUBCONTEXT, subctx)
+    print(f"  Subctx ID:        {subctx.subctx_id}")
+
+    # 3. Open channel
+    ch_fd = test_open_channel(ctrl_fd)
+
+    # 4. Bind channel to TSG
+    print("\n=== BIND_CHANNEL_EX ===")
+    bind = nvgpu_tsg_bind_channel_ex_args()
+    bind.channel_fd = ch_fd
+    bind.subctx_id = subctx.subctx_id
+    nv_ioctl(tsg_fd, NVGPU_TSG_IOCTL_BIND_CHANNEL_EX, bind)
+    print(f"  Bound channel {ch_fd} to TSG {tsg_fd}")
+
+    # 5. Bind channel to AS
+    print("\n=== AS BIND_CHANNEL ===")
+    as_bind = nvgpu_as_bind_channel_args()
+    as_bind.channel_fd = ch_fd
+    nv_ioctl(as_fd, NVGPU_AS_IOCTL_BIND_CHANNEL, as_bind)
+    print(f"  Bound channel {ch_fd} to AS {as_fd}")
+
+    # 6. Disable watchdog
+    print("\n=== CHANNEL WDT (disable) ===")
+    wdt = nvgpu_channel_wdt_args()
+    wdt.wdt_status = 1  # NVGPU_IOCTL_CHANNEL_DISABLE_WDT
+    wdt.timeout_ms = 0
+    nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_WDT, wdt)
+    print(f"  Watchdog disabled")
+
+    # 7. Allocate GPFIFO + userd buffers via nvmap
+    print("\n=== Allocating GPFIFO + userd buffers ===")
+    GPFIFO_ENTRIES = 1024  # reasonable default
+    GPFIFO_SIZE = GPFIFO_ENTRIES * 8  # 8 bytes per GPFIFO entry
+    USERD_SIZE = 4096  # one page for userd
+
+    # GPFIFO buffer
+    gpfifo_create = nvmap_create_handle()
+    gpfifo_create.size = GPFIFO_SIZE
+    nv_ioctl(nvmap_fd, NVMAP_IOC_CREATE, gpfifo_create)
+    gpfifo_alloc = nvmap_alloc_handle()
+    gpfifo_alloc.handle = gpfifo_create.handle
+    gpfifo_alloc.heap_mask = NVMAP_HEAP_IOVMM
+    gpfifo_alloc.flags = NVMAP_HANDLE_WRITE_COMBINE
+    gpfifo_alloc.align = 4096
+    gpfifo_alloc.kind = 0
+    nv_ioctl(nvmap_fd, NVMAP_IOC_ALLOC, gpfifo_alloc)
+    gpfifo_getfd = nvmap_create_handle()
+    gpfifo_getfd.handle = gpfifo_create.handle
+    nv_ioctl(nvmap_fd, NVMAP_IOC_GET_FD, gpfifo_getfd)
+    gpfifo_dmabuf_fd = gpfifo_getfd.size
+    print(f"  GPFIFO buffer:    handle={gpfifo_create.handle}, dmabuf_fd={gpfifo_dmabuf_fd}, size={GPFIFO_SIZE}")
+
+    # userd buffer
+    userd_create = nvmap_create_handle()
+    userd_create.size = USERD_SIZE
+    nv_ioctl(nvmap_fd, NVMAP_IOC_CREATE, userd_create)
+    userd_alloc = nvmap_alloc_handle()
+    userd_alloc.handle = userd_create.handle
+    userd_alloc.heap_mask = NVMAP_HEAP_IOVMM
+    userd_alloc.flags = NVMAP_HANDLE_WRITE_COMBINE
+    userd_alloc.align = 4096
+    userd_alloc.kind = 0
+    nv_ioctl(nvmap_fd, NVMAP_IOC_ALLOC, userd_alloc)
+    userd_getfd = nvmap_create_handle()
+    userd_getfd.handle = userd_create.handle
+    nv_ioctl(nvmap_fd, NVMAP_IOC_GET_FD, userd_getfd)
+    userd_dmabuf_fd = userd_getfd.size
+    print(f"  userd buffer:     handle={userd_create.handle}, dmabuf_fd={userd_dmabuf_fd}, size={USERD_SIZE}")
+
+    # 8. SETUP_BIND — this is the big one! Sets up GPFIFO + userd + usermode submit
+    print("\n=== SETUP_BIND (GPFIFO + userd + usermode submit) ===")
+    setup = nvgpu_channel_setup_bind_args()
+    setup.num_gpfifo_entries = GPFIFO_ENTRIES
+    setup.num_inflight_jobs = 0
+    setup.gpfifo_dmabuf_fd = gpfifo_dmabuf_fd
+    setup.gpfifo_dmabuf_offset = 0
+    setup.userd_dmabuf_fd = userd_dmabuf_fd
+    setup.userd_dmabuf_offset = 0
+    setup.flags = NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_SUPPORT
+    nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_SETUP_BIND, setup)
+    print(f"  Work submit token: {setup.work_submit_token}")
+    print(f"  GPFIFO GPU VA:     0x{setup.gpfifo_gpu_va:012x}")
+    print(f"  USERD GPU VA:      0x{setup.userd_gpu_va:012x}")
+    print(f"  Usermode MMIO VA:  0x{setup.usermode_mmio_gpu_va:012x}")
+
+    # 9. Get user syncpoint
+    print("\n=== GET_USER_SYNCPOINT ===")
+    syncpt = nvgpu_get_user_syncpoint_args()
+    nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_GET_USER_SYNCPOINT, syncpt)
+    print(f"  Syncpoint ID:     {syncpt.syncpoint_id}")
+    print(f"  Syncpoint value:  {syncpt.syncpoint_value}")
+    print(f"  GPU VA:           0x{syncpt.gpu_va:012x}")
+
+    # 10. Allocate compute class!
+    print(f"\n=== ALLOC_OBJ_CTX (compute class 0x{compute_class:04x}) ===")
+    obj = nvgpu_alloc_obj_ctx_args()
+    obj.class_num = compute_class
+    obj.flags = 0
+    nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_ALLOC_OBJ_CTX, obj)
+    print(f"  Compute object:   class=0x{obj.class_num:04x}, obj_id=0x{obj.obj_id:016x}")
+    print(f"  ✓ COMPUTE CLASS ALLOCATED SUCCESSFULLY!")
+
+    return {
+        "tsg_fd": tsg_fd,
+        "ch_fd": ch_fd,
+        "gpfifo_dmabuf_fd": gpfifo_dmabuf_fd,
+        "userd_dmabuf_fd": userd_dmabuf_fd,
+        "work_submit_token": setup.work_submit_token,
+        "syncpoint_id": syncpt.syncpoint_id,
+        "compute_class": compute_class,
+    }
+
+
 def test_nvmap_heaps(nvmap_fd):
     """Query available memory heaps."""
     print("\n=== NVMAP GET_AVAILABLE_HEAPS ===")
@@ -533,23 +893,65 @@ def main():
 
     # Test 4: NVMAP CREATE + ALLOC
     total_tests += 1
+    dmabuf_fd = None
     try:
         handle, dmabuf_fd = test_nvmap_create_alloc(nvmap_fd, size=4096)
         success_count += 1
         print("  ✓ NVMAP CREATE + ALLOC succeeded!")
-        # Clean up
-        os.close(dmabuf_fd)
     except Exception as e:
         print(f"  ✗ NVMAP CREATE + ALLOC failed: {e}")
+
+    # Test 5: ALLOC_AS (create GPU address space)
+    total_tests += 1
+    as_fd = None
+    try:
+        as_fd = test_alloc_as(ctrl_fd)
+        success_count += 1
+        print("  ✓ ALLOC_AS succeeded!")
+    except Exception as e:
+        print(f"  ✗ ALLOC_AS failed: {e}")
+
+    # Test 6: MAP_BUFFER_EX (map buffer into GPU VA)
+    total_tests += 1
+    if as_fd is not None and dmabuf_fd is not None:
+        try:
+            gpu_va = test_map_buffer(as_fd, dmabuf_fd, size=4096)
+            success_count += 1
+            print("  ✓ MAP_BUFFER_EX succeeded!")
+        except Exception as e:
+            print(f"  ✗ MAP_BUFFER_EX failed: {e}")
+    else:
+        print("  ✗ MAP_BUFFER_EX skipped (AS or dmabuf not available)")
+
+    # Test 7: Full channel + compute class setup
+    total_tests += 1
+    compute_class = chars.compute_class if chars else 0xc7c0
+    if as_fd is not None:
+        try:
+            channel_info = test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class)
+            success_count += 1
+            print("\n  ✓ FULL CHANNEL + COMPUTE SETUP succeeded!")
+        except Exception as e:
+            print(f"\n  ✗ FULL CHANNEL + COMPUTE SETUP failed: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("  ✗ Channel setup skipped (AS not available)")
 
     # Summary
     print(f"\n{'=' * 60}")
     print(f"Results: {success_count}/{total_tests} tests passed")
     if success_count == total_tests:
-        print("ALL TESTS PASSED — nvgpu/nvmap ioctl interface is accessible!")
-        print("\nNext: test ALLOC_AS + MAP_BUFFER_EX to create GPU VA mappings")
+        print("ALL TESTS PASSED!")
+        print("\nWe have proven:")
+        print("  1. GPU characteristics readable (arch, compute_class, flags)")
+        print("  2. Memory allocation works (nvmap IOVMM)")
+        print("  3. GPU VA mapping works (MAP_BUFFER_EX)")
+        print("  4. Channel + TSG + compute class setup works")
+        print("  5. Usermode submit is available")
+        print("\nNEXT: Build TegraIface for tinygrad!")
     else:
-        print("Some tests failed — check permissions and driver state")
+        print("Some tests failed — check errors above")
     print(f"{'=' * 60}")
 
     # Cleanup
