@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-Phase 1+2 Test: Direct nvgpu/nvmap ioctl access from Python.
+Phase 1+2+3 Test: Direct nvgpu/nvmap ioctl access from Python.
 
 Phase 1: Proves we can talk to the Jetson Orin GPU without going through CUDA.
 Phase 2: Proves CPU<->GPU shared memory works end-to-end via mmap + MAP_BUFFER_EX.
+Phase 3: Command submission — GPFIFO push, QMD compute dispatch, shader execution.
 
 Tests the ioctl sequence discovered by stracing CUDA:
   1. Open /dev/nvmap, /dev/nvgpu/igpu0/ctrl
@@ -12,6 +13,7 @@ Tests the ioctl sequence discovered by stracing CUDA:
   4. ALLOC_AS — create address space
   5. mmap dmabuf for CPU access
   6. Verify CPU<->GPU memory coherence (IO_COHERENCE)
+  7. GPFIFO command submission + compute shader dispatch
 
 Prerequisites: run as user with access to /dev/nvgpu/* and /dev/nvmap
 """
@@ -1494,14 +1496,891 @@ def test_cacheable_flags(nvmap_fd, as_fd):
 
 
 # ============================================================================
-# Main
+# Phase 3: Command Submission — GPFIFO push, QMD, compute dispatch
 # ============================================================================
+
+# --- GPU method / push buffer constants ---
+# From tinygrad autogen nv_570.py
+
+# Compute class methods (subchannel 1)
+NVC6C0_SET_OBJECT       = 0x0000
+NVC6C0_SEND_PCAS_A      = 0x02b4
+NVC6C0_SEND_SIGNALING_PCAS2_B = 0x02c0
+NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI = 0x021c
+
+# GPFIFO channel methods (subchannel 0)
+NVC56F_SEM_ADDR_LO      = 0x005c
+NVC56F_SEM_ADDR_HI      = 0x0060
+NVC56F_SEM_PAYLOAD_LO   = 0x0064
+NVC56F_SEM_PAYLOAD_HI   = 0x0068
+NVC56F_SEM_EXECUTE       = 0x006c
+NVC56F_NON_STALL_INTERRUPT = 0x0020
+
+# SEM_EXECUTE flag bits
+NVC56F_SEM_EXECUTE_OPERATION_RELEASE = 1
+NVC56F_SEM_EXECUTE_RELEASE_WFI_EN   = (1 << 20)
+NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT = (1 << 24)
+NVC56F_SEM_EXECUTE_RELEASE_TIMESTAMP_EN = (1 << 25)
+
+# DMA copy class methods (subchannel 4)
+NVC6B5_SET_OBJECT       = 0x0000
+NVC6B5_OFFSET_IN_UPPER  = 0x0400
+NVC6B5_OFFSET_IN_LOWER  = 0x0404
+NVC6B5_OFFSET_OUT_UPPER = 0x0408
+NVC6B5_OFFSET_OUT_LOWER = 0x040c
+NVC6B5_LINE_LENGTH_IN   = 0x0418
+NVC6B5_LAUNCH_DMA       = 0x0300
+NVC6B5_SET_SEMAPHORE_A  = 0x0240
+NVC6B5_SET_SEMAPHORE_B  = 0x0244
+NVC6B5_SET_SEMAPHORE_PAYLOAD = 0x0248
+
+# LAUNCH_DMA flags 
+NVC6B5_LAUNCH_DMA_DATA_TRANSFER_TYPE_NON_PIPELINED = (1 << 1)
+NVC6B5_LAUNCH_DMA_SRC_MEMORY_LAYOUT_PITCH = 0
+NVC6B5_LAUNCH_DMA_DST_MEMORY_LAYOUT_PITCH = 0
+NVC6B5_LAUNCH_DMA_FLUSH_ENABLE_TRUE = (1 << 2)
+NVC6B5_LAUNCH_DMA_SEMAPHORE_TYPE_RELEASE_FOUR_WORD = (2 << 3)
+
+# Control struct offsets (from AmpereAControlGPFifo)
+USERD_GP_GET_OFFSET = 136   # bytes
+USERD_GP_PUT_OFFSET = 140   # bytes
+
+# QMD V03 field definitions (from NVC6C0_QMDV03_00_*)
+# Fields are (hi_bit, lo_bit) tuples
+QMDV03_FIELDS = {
+    'OUTER_PUT':            (30, 0),
+    'OUTER_OVERFLOW':       (31, 31),
+    'OUTER_GET':            (62, 32),
+    'OUTER_STICKY_OVERFLOW': (63, 63),
+    'INNER_GET':            (94, 64),
+    'INNER_OVERFLOW':       (95, 95),
+    'INNER_PUT':            (126, 96),
+    'INNER_STICKY_OVERFLOW': (127, 127),
+    'QMD_GROUP_ID':         (133, 128),
+    'SM_GLOBAL_CACHING_ENABLE': (134, 134),
+    'IS_QUEUE':             (136, 136),
+    'INVALIDATE_TEXTURE_HEADER_CACHE': (186, 186),
+    'INVALIDATE_TEXTURE_SAMPLER_CACHE': (187, 187),
+    'INVALIDATE_TEXTURE_DATA_CACHE':   (188, 188),
+    'INVALIDATE_SHADER_DATA_CACHE':    (189, 189),
+    'INVALIDATE_SHADER_CONSTANT_CACHE': (191, 191),
+    'CTA_RASTER_WIDTH':     (415, 384),
+    'CTA_RASTER_HEIGHT':    (431, 416),
+    'CTA_RASTER_DEPTH':     (463, 448),
+    'PROGRAM_PREFETCH_ADDR_LOWER_SHIFTED': (287, 256),
+    'CWD_MEMBAR_TYPE':      (369, 368),
+    'API_VISIBLE_CALL_LIMIT': (378, 378),
+    'SAMPLER_INDEX':        (382, 382),
+    'SHARED_MEMORY_SIZE':   (561, 544),
+    'MIN_SM_CONFIG_SHARED_MEM_SIZE': (567, 562),
+    'TARGET_SM_CONFIG_SHARED_MEM_SIZE': (662, 657),
+    'MAX_SM_CONFIG_SHARED_MEM_SIZE': (574, 569),
+    'QMD_VERSION':          (579, 576),
+    'QMD_MAJOR_VERSION':    (583, 580),
+    'CTA_THREAD_DIMENSION0': (607, 592),
+    'CTA_THREAD_DIMENSION1': (623, 608),
+    'CTA_THREAD_DIMENSION2': (639, 624),
+    'REGISTER_COUNT_V':     (656, 648),
+    'SHADER_LOCAL_MEMORY_LOW_SIZE': (759, 736),
+    'BARRIER_COUNT':        (767, 763),
+    'RELEASE0_ADDRESS_LOWER':   (799, 768),
+    'RELEASE0_ADDRESS_UPPER':   (807, 800),
+    'RELEASE0_ENABLE':          (823, 823),
+    'RELEASE0_MEMBAR_TYPE':     (819, 819),
+    'RELEASE0_PAYLOAD_LOWER':   (831, 824),  # actually (863, 832)
+    'RELEASE1_ADDRESS_LOWER':   (927, 896),
+    'RELEASE1_ADDRESS_UPPER':   (935, 928),
+    'RELEASE1_ENABLE':          (951, 951),
+    'PROGRAM_ADDRESS_LOWER':    (1567, 1536),
+    'PROGRAM_ADDRESS_UPPER':    (1584, 1568),
+    'PROGRAM_PREFETCH_ADDR_UPPER_SHIFTED': (1640, 1632),
+    'PROGRAM_PREFETCH_SIZE':    (1649, 1641),
+    'SASS_VERSION':             (1663, 1656),
+    'SHADER_LOCAL_MEMORY_HIGH_SIZE': (1623, 1600),
+}
+
+# Constant buffer fields are parameterized by index
+def QMDV03_CONSTANT_BUFFER_VALID(i):     return (640 + i, 640 + i)
+def QMDV03_CONSTANT_BUFFER_ADDR_LOWER(i): return (1055 + i*64, 1024 + i*64)
+def QMDV03_CONSTANT_BUFFER_ADDR_UPPER(i): return (1072 + i*64, 1056 + i*64)
+def QMDV03_CONSTANT_BUFFER_SIZE_SHIFTED4(i): return (1087 + i*64, 1075 + i*64)
+def QMDV03_CONSTANT_BUFFER_INVALIDATE(i): return (1074 + i*64, 1074 + i*64)
+
+
+class QMDBuilder:
+    """Build a QMD (Queue Meta Data) v03 struct for Ampere compute dispatch.
+    
+    The QMD is 0x40 * 4 = 256 bytes (64 dwords) for version 3.
+    Each field is specified as (hi_bit, lo_bit) and values are packed little-endian.
+    """
+    SIZE = 0x40 * 4  # 256 bytes
+    
+    def __init__(self):
+        self.data = bytearray(self.SIZE)
+    
+    def _write_bits(self, hi, lo, value):
+        """Write a value into bit range [lo:hi] (inclusive)."""
+        width = hi - lo + 1
+        if value >= (1 << width):
+            raise ValueError(f"Value {value:#x} doesn't fit in {width} bits [{hi}:{lo}]")
+        # Read current bytes, modify, write back
+        byte_lo = lo // 8
+        byte_hi = hi // 8
+        num = int.from_bytes(self.data[byte_lo:byte_hi+1], "little")
+        mask = ((1 << width) - 1) << (lo % 8)
+        num = (num & ~mask) | ((value << (lo % 8)) & mask)
+        self.data[byte_lo:byte_hi+1] = num.to_bytes(byte_hi - byte_lo + 1, "little")
+    
+    def _read_bits(self, hi, lo):
+        byte_lo = lo // 8
+        byte_hi = hi // 8
+        num = int.from_bytes(self.data[byte_lo:byte_hi+1], "little")
+        mask = ((1 << (hi - lo + 1)) - 1) << (lo % 8)
+        return (num & mask) >> (lo % 8)
+    
+    def write(self, **kwargs):
+        for name, value in kwargs.items():
+            key = name.upper()
+            if key in QMDV03_FIELDS:
+                hi, lo = QMDV03_FIELDS[key]
+                self._write_bits(hi, lo, value)
+            else:
+                raise KeyError(f"Unknown QMD field: {name}")
+    
+    def write_field(self, hi, lo, value):
+        self._write_bits(hi, lo, value)
+    
+    def set_constant_buf(self, index, addr, size, valid=1, invalidate=1):
+        """Set constant buffer binding."""
+        hi, lo = QMDV03_CONSTANT_BUFFER_VALID(index)
+        self._write_bits(hi, lo, valid)
+        hi, lo = QMDV03_CONSTANT_BUFFER_ADDR_LOWER(index)
+        self._write_bits(hi, lo, addr & 0xFFFFFFFF)
+        hi, lo = QMDV03_CONSTANT_BUFFER_ADDR_UPPER(index)
+        self._write_bits(hi, lo, (addr >> 32) & 0x1FFFF)
+        hi, lo = QMDV03_CONSTANT_BUFFER_SIZE_SHIFTED4(index)
+        self._write_bits(hi, lo, size >> 4 if size > 0 else 0)
+        hi, lo = QMDV03_CONSTANT_BUFFER_INVALIDATE(index)
+        self._write_bits(hi, lo, invalidate)
+
+
+class PushBufferBuilder:
+    """Build a push buffer of GPU methods for GPFIFO submission.
+    
+    Each method is a 4-byte header + N data words:
+      Header: (typ << 28) | (count << 16) | (subchannel << 13) | (method >> 2)
+      typ=2 is "increasing" method (auto-increment register address)
+      
+    The whole push buffer will be pointed to by a GPFIFO entry.
+    """
+    def __init__(self, max_words=1024):
+        self.words = []
+    
+    def nvm(self, subchannel, method, *args, typ=2):
+        """Add a method call to the push buffer.
+        
+        subchannel: 0 = GPFIFO/channel class, 1 = compute, 4 = DMA copy
+        method: register offset (byte address, will be >> 2)
+        args: data words to write
+        """
+        header = (typ << 28) | (len(args) << 16) | (subchannel << 13) | (method >> 2)
+        self.words.append(header)
+        self.words.extend(args)
+    
+    def get_bytes(self):
+        """Return push buffer as bytes."""
+        return struct.pack(f'<{len(self.words)}I', *self.words)
+    
+    def __len__(self):
+        return len(self.words)
+
+
+def compile_ptx_to_cubin(ptx_source, arch="sm_87"):
+    """Compile PTX source to CUBIN using nvrtc.
+    
+    Returns the CUBIN binary as bytes, or raises RuntimeError on failure.
+    """
+    nvrtc = ctypes.CDLL("libnvrtc.so")
+    
+    # Function prototypes
+    nvrtc.nvrtcCreateProgram.restype = ctypes.c_int
+    nvrtc.nvrtcCreateProgram.argtypes = [
+        ctypes.POINTER(ctypes.c_void_p),  # prog
+        ctypes.c_char_p,                   # src
+        ctypes.c_char_p,                   # name
+        ctypes.c_int,                      # numHeaders
+        ctypes.POINTER(ctypes.c_char_p),   # headers
+        ctypes.POINTER(ctypes.c_char_p),   # includeNames
+    ]
+    
+    nvrtc.nvrtcCompileProgram.restype = ctypes.c_int
+    nvrtc.nvrtcCompileProgram.argtypes = [
+        ctypes.c_void_p,                   # prog
+        ctypes.c_int,                      # numOptions
+        ctypes.POINTER(ctypes.c_char_p),   # options
+    ]
+    
+    nvrtc.nvrtcGetCUBINSize.restype = ctypes.c_int
+    nvrtc.nvrtcGetCUBINSize.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+    
+    nvrtc.nvrtcGetCUBIN.restype = ctypes.c_int
+    nvrtc.nvrtcGetCUBIN.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    
+    nvrtc.nvrtcGetProgramLog.restype = ctypes.c_int
+    nvrtc.nvrtcGetProgramLog.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    
+    nvrtc.nvrtcGetProgramLogSize.restype = ctypes.c_int
+    nvrtc.nvrtcGetProgramLogSize.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t)]
+    
+    nvrtc.nvrtcDestroyProgram.restype = ctypes.c_int
+    nvrtc.nvrtcDestroyProgram.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+    
+    # Create program
+    prog = ctypes.c_void_p()
+    src = ptx_source.encode('utf-8') if isinstance(ptx_source, str) else ptx_source
+    ret = nvrtc.nvrtcCreateProgram(ctypes.byref(prog), src, b"test.cu", 0, None, None)
+    if ret != 0:
+        raise RuntimeError(f"nvrtcCreateProgram failed: {ret}")
+    
+    # Compile with architecture target
+    options = (ctypes.c_char_p * 1)(f"--gpu-architecture={arch}".encode())
+    ret = nvrtc.nvrtcCompileProgram(prog, 1, options)
+    
+    if ret != 0:
+        # Get log
+        log_size = ctypes.c_size_t()
+        nvrtc.nvrtcGetProgramLogSize(prog, ctypes.byref(log_size))
+        log_buf = ctypes.create_string_buffer(log_size.value)
+        nvrtc.nvrtcGetProgramLog(prog, log_buf)
+        nvrtc.nvrtcDestroyProgram(ctypes.byref(prog))
+        raise RuntimeError(f"nvrtcCompileProgram failed ({ret}): {log_buf.value.decode()}")
+    
+    # Get CUBIN
+    cubin_size = ctypes.c_size_t()
+    ret = nvrtc.nvrtcGetCUBINSize(prog, ctypes.byref(cubin_size))
+    if ret != 0:
+        nvrtc.nvrtcDestroyProgram(ctypes.byref(prog))
+        raise RuntimeError(f"nvrtcGetCUBINSize failed: {ret}")
+    
+    cubin = ctypes.create_string_buffer(cubin_size.value)
+    ret = nvrtc.nvrtcGetCUBIN(prog, cubin)
+    if ret != 0:
+        nvrtc.nvrtcDestroyProgram(ctypes.byref(prog))
+        raise RuntimeError(f"nvrtcGetCUBIN failed: {ret}")
+    
+    nvrtc.nvrtcDestroyProgram(ctypes.byref(prog))
+    return cubin.raw
+
+
+def parse_cubin_elf(cubin_bytes):
+    """Parse a CUBIN ELF to find the .text section (SASS code) and program info.
+    
+    Returns dict with:
+        'text_offset': offset of .text.kernel_name within the ELF
+        'text_size':   size of the .text section
+        'text_data':   the actual SASS machine code bytes
+        'reg_count':   number of registers used (from .nv.info)
+        'shared_mem':  shared memory size
+    """
+    import struct as st
+    data = cubin_bytes
+    
+    # Parse ELF header (64-bit)
+    if data[:4] != b'\x7fELF':
+        raise ValueError("Not an ELF file")
+    
+    ei_class = data[4]  # 1=32bit, 2=64bit
+    if ei_class != 2:
+        raise ValueError(f"Expected 64-bit ELF, got class {ei_class}")
+    
+    # ELF64 header fields
+    e_shoff = st.unpack_from('<Q', data, 40)[0]     # section header offset
+    e_shentsize = st.unpack_from('<H', data, 58)[0]  # section header entry size
+    e_shnum = st.unpack_from('<H', data, 60)[0]      # number of section headers
+    e_shstrndx = st.unpack_from('<H', data, 62)[0]   # string table section index
+    
+    # Read section header string table
+    shstr_off = st.unpack_from('<Q', data, e_shoff + e_shstrndx * e_shentsize + 24)[0]
+    shstr_size = st.unpack_from('<Q', data, e_shoff + e_shstrndx * e_shentsize + 32)[0]
+    shstrtab = data[shstr_off:shstr_off + shstr_size]
+    
+    def get_section_name(sh_name):
+        end = shstrtab.index(b'\x00', sh_name)
+        return shstrtab[sh_name:end].decode('ascii')
+    
+    result = {
+        'text_offset': 0, 'text_size': 0, 'text_data': b'',
+        'reg_count': 16, 'shared_mem': 0, 'full_elf': data
+    }
+    
+    for i in range(e_shnum):
+        sh_base = e_shoff + i * e_shentsize
+        sh_name = st.unpack_from('<I', data, sh_base)[0]
+        sh_type = st.unpack_from('<I', data, sh_base + 4)[0]
+        sh_offset = st.unpack_from('<Q', data, sh_base + 24)[0]
+        sh_size = st.unpack_from('<Q', data, sh_base + 32)[0]
+        
+        name = get_section_name(sh_name)
+        
+        if name.startswith('.text.'):
+            result['text_offset'] = sh_offset
+            result['text_size'] = sh_size
+            result['text_data'] = data[sh_offset:sh_offset + sh_size]
+        elif name.startswith('.nv.info.'):
+            # Parse EIATTR entries for register count
+            info_data = data[sh_offset:sh_offset + sh_size]
+            off = 0
+            while off + 12 <= len(info_data):
+                attr_fmt = st.unpack_from('<BBH', info_data, off)
+                attr_type = attr_fmt[0]
+                attr_param = attr_fmt[2]
+                if attr_param == 0x2f:  # EIATTR_REGCOUNT
+                    val = st.unpack_from('<II', info_data, off + 4)
+                    result['reg_count'] = val[1]
+                off += 12  # entries are typically 12 bytes
+        elif name.startswith('.nv.shared.'):
+            result['shared_mem'] = sh_size
+    
+    return result
+
+
+def test_mmap_userd_gpfifo(channel_info, nvmap_fd):
+    """Test 12: mmap the userd and GPFIFO buffers for usermode submit.
+    
+    These buffers were created in Phase 1's test_full_channel_setup() and
+    passed via channel_info dict. We mmap them to CPU for direct write access.
+    """
+    print("\n" + "=" * 60)
+    print("TEST 12: MMAP USERD + GPFIFO BUFFERS")
+    print("=" * 60)
+    
+    userd_dmabuf_fd = channel_info['userd_dmabuf_fd']
+    gpfifo_dmabuf_fd = channel_info['gpfifo_dmabuf_fd']
+    
+    # mmap userd (4KB)
+    userd_mm = mmap.mmap(userd_dmabuf_fd, 4096, mmap.MAP_SHARED,
+                          mmap.PROT_READ | mmap.PROT_WRITE, 0)
+    print(f"  userd mmap:       OK, 4096 bytes, fd={userd_dmabuf_fd}")
+    
+    # Read GPGet and GPPut from userd
+    gp_get = struct.unpack_from('<I', userd_mm, USERD_GP_GET_OFFSET)[0]
+    gp_put = struct.unpack_from('<I', userd_mm, USERD_GP_PUT_OFFSET)[0]
+    print(f"  GPGet:            {gp_get}")
+    print(f"  GPPut:            {gp_put}")
+    
+    # mmap GPFIFO ring (8KB = 1024 entries * 8 bytes)
+    gpfifo_mm = mmap.mmap(gpfifo_dmabuf_fd, 8192, mmap.MAP_SHARED,
+                           mmap.PROT_READ | mmap.PROT_WRITE, 0)
+    print(f"  GPFIFO mmap:      OK, 8192 bytes, fd={gpfifo_dmabuf_fd}")
+    
+    # Verify GPFIFO is zeroed initially
+    nonzero = sum(1 for i in range(8192) if gpfifo_mm[i] != 0)
+    print(f"  GPFIFO non-zero:  {nonzero} bytes (should be 0)")
+    
+    if nonzero > 0:
+        print("  WARNING: GPFIFO not zeroed — may have stale entries")
+    
+    channel_info['userd_mm'] = userd_mm
+    channel_info['gpfifo_mm'] = gpfifo_mm
+    
+    print(f"\n  ✓ USERD + GPFIFO mmap PASSED")
+    return True
+
+
+def submit_pushbuf(channel_info, pushbuf_gpu_va, pushbuf_len_words):
+    """Submit a push buffer through the GPFIFO.
+    
+    1. Write GPFIFO entry pointing to push buffer
+    2. Update GP_PUT in userd
+    3. Ring doorbell via host1x (write work_submit_token)
+    
+    Args:
+        channel_info: dict with userd_mm, gpfifo_mm, work_submit_token, ch_fd
+        pushbuf_gpu_va: GPU virtual address of the push buffer
+        pushbuf_len_words: number of 32-bit words in the push buffer
+    """
+    userd_mm = channel_info['userd_mm']
+    gpfifo_mm = channel_info['gpfifo_mm']
+    token = channel_info['work_submit_token']
+    
+    # Read current GP_PUT
+    gp_put = struct.unpack_from('<I', userd_mm, USERD_GP_PUT_OFFSET)[0]
+    
+    # Format GPFIFO entry (8 bytes = 64 bits):
+    # From tinygrad: (cmdq_addr//4 << 2) | (len << 42) | (1 << 41)
+    # This gives: bits[1:0]=0, bits[40:2]=GPU_VA>>2, bit[41]=PRIV, bits[52:42]=length  
+    gpfifo_entry = (pushbuf_gpu_va & ~3) | (pushbuf_len_words << 42) | (1 << 41)
+    
+    # Write GPFIFO entry at current GP_PUT position
+    entry_offset = (gp_put % 1024) * 8  # 8 bytes per entry
+    struct.pack_into('<Q', gpfifo_mm, entry_offset, gpfifo_entry)
+    
+    # Update GP_PUT
+    new_gp_put = (gp_put + 1) % 1024
+    struct.pack_into('<I', userd_mm, USERD_GP_PUT_OFFSET, new_gp_put)
+    
+    # Memory barrier (flush writes before doorbell)
+    # On ARM64 (aarch64), we need a DMB (Data Memory Barrier)
+    # In Python, we can't easily do a memory barrier, but mmap with MAP_SHARED
+    # and the WC flags on the userd buffer should make writes visible.
+    # For extra safety, flush the mmap
+    # Note: mmap.flush() calls msync() which returns EINVAL on DMA-BUF mmaps.
+    # IO_COHERENCE means writes are immediately visible to GPU — no flush needed.
+    
+    # Ring doorbell: write work_submit_token
+    # On Jetson nvgpu, the doorbell is the SUBMIT_GPFIFO ioctl when GPU_MMIO 
+    # is not available. But since we have USERMODE_SUPPORT, there must be a
+    # mechanism. The kernel returns a work_submit_token which on desktop NV is
+    # written to an MMIO register. On Jetson, the trick is that we can use
+    # the SUBMIT_GPFIFO ioctl with 0 entries to "kick" the channel, OR
+    # the hardware automatically polls GPPut changes.
+    #
+    # Actually — on nvgpu with usermode submit, the kernel sets up the GPU to
+    # poll the userd GPPut register. Writing GPPut IS the doorbell.
+    # The work_submit_token is used with the host1x doorbell register which
+    # the kernel maps at channel init time internally.
+    #
+    # Let's try with just GPPut update first (most likely mechanism for nvgpu),
+    # and if that doesn't work, we'll try SUBMIT_GPFIFO with 0 entries as fallback.
+    
+    return new_gp_put
+
+
+def test_gpfifo_semaphore_release(channel_info, allocator, compute_class):
+    """Test 13: Submit a command through GPFIFO to release a semaphore.
+    
+    This proves the GPU is processing our push buffer by having it write
+    a known value to a memory location (semaphore release). We:
+    1. Allocate a semaphore buffer + push buffer
+    2. Build push buffer with SET_OBJECT (compute class) + SEM release
+    3. Submit via GPFIFO
+    4. Poll semaphore for the expected value
+    """
+    print("\n" + "=" * 60)
+    print("TEST 13: GPFIFO SEMAPHORE RELEASE")
+    print("=" * 60)
+    
+    # Allocate semaphore buffer (will be written by GPU)
+    sem_buf = allocator.alloc(4096, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(sem_buf)
+    allocator.gpu_map(sem_buf)
+    
+    # Clear semaphore to a known initial value
+    struct.pack_into('<Q', sem_buf.cpu_addr, 0, 0)  # 64-bit zero
+    print(f"  Semaphore buffer: gpu_va=0x{sem_buf.gpu_va:012x}")
+    
+    # Allocate push buffer
+    pushbuf = allocator.alloc(4096, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(pushbuf)
+    allocator.gpu_map(pushbuf)
+    
+    # Build push buffer
+    pb = PushBufferBuilder()
+    
+    # First: SET_OBJECT on subchannel 1 (compute class)
+    pb.nvm(1, NVC6C0_SET_OBJECT, compute_class)
+    
+    # Then: DMA copy class on subchannel 4 (needed for some operations)
+    dma_class = 0xc7b5  # Ampere DMA copy class  
+    pb.nvm(4, NVC6B5_SET_OBJECT, dma_class)
+    
+    # Semaphore release via GPFIFO channel class (subchannel 0)
+    # Write value 0x42 to semaphore address
+    sem_addr = sem_buf.gpu_va
+    sem_value = 0x42
+    
+    pb.nvm(0, NVC56F_SEM_ADDR_LO,
+           sem_addr & 0xFFFFFFFF,          # SEM_ADDR_LO
+           (sem_addr >> 32) & 0xFF,        # SEM_ADDR_HI
+           sem_value & 0xFFFFFFFF,          # SEM_PAYLOAD_LO
+           (sem_value >> 32) & 0xFFFFFFFF,  # SEM_PAYLOAD_HI
+           NVC56F_SEM_EXECUTE_OPERATION_RELEASE | NVC56F_SEM_EXECUTE_RELEASE_WFI_EN | NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT)
+    
+    # Write push buffer data
+    pb_bytes = pb.get_bytes()
+    for i, b in enumerate(pb_bytes):
+        pushbuf.cpu_addr[i] = b
+    # IO_COHERENCE: no flush needed
+    
+    print(f"  Push buffer:      {len(pb)} words ({len(pb_bytes)} bytes)")
+    print(f"  Push buffer VA:   0x{pushbuf.gpu_va:012x}")
+    print(f"  Sem addr:         0x{sem_addr:012x}")
+    print(f"  Expected value:   0x{sem_value:x}")
+    
+    # Submit via GPFIFO
+    submit_pushbuf(channel_info, pushbuf.gpu_va, len(pb))
+    
+    # Wait for completion by polling semaphore
+    print(f"  Waiting for GPU...")
+    timeout_ms = 2000
+    start = time.time()
+    result_value = 0
+    while (time.time() - start) * 1000 < timeout_ms:
+        result_value = struct.unpack_from('<Q', sem_buf.cpu_addr, 0)[0]
+        if result_value == sem_value:
+            elapsed = (time.time() - start) * 1000
+            print(f"  Semaphore value:  0x{result_value:x} (match! took {elapsed:.1f}ms)")
+            print(f"\n  ✓ GPFIFO SEMAPHORE RELEASE PASSED")
+            return True
+        time.sleep(0.001)
+    
+    # If we get here, check if GPPut update alone didn't trigger the GPU.
+    # Try the SUBMIT_GPFIFO ioctl as a fallback doorbell kick.
+    elapsed = (time.time() - start) * 1000
+    result_value = struct.unpack_from('<Q', sem_buf.cpu_addr, 0)[0]
+    print(f"  After {elapsed:.0f}ms: sem=0x{result_value:x} (expected 0x{sem_value:x})")
+    
+    if result_value != sem_value:
+        print("  GPPut update alone didn't trigger GPU, trying SUBMIT_GPFIFO kick...")
+        try:
+            # SUBMIT_GPFIFO ioctl with 0 entries as a doorbell kick
+            # struct nvgpu_submit_gpfifo_args { u64 gpfifo, u32 num, u32 flags, ... }
+            kick_buf = bytearray(48)  # oversized to be safe
+            struct.pack_into('<QII', kick_buf, 0, 0, 0, 0)  # gpfifo=0, num=0, flags=0
+            NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO = _IOWR('H', 107, 48)
+            try:
+                fcntl.ioctl(channel_info['ch_fd'], NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO, kick_buf)
+            except OSError as e:
+                print(f"  SUBMIT_GPFIFO kick returned: {e}")
+                # Expected to fail for usermode channels — that's fine
+                # The kick via host1x should work differently
+        except Exception as e:
+            print(f"  Kick attempt error: {e}")
+        
+        # Wait a bit more after kick
+        time.sleep(0.5)
+        result_value = struct.unpack_from('<Q', sem_buf.cpu_addr, 0)[0]
+        print(f"  After kick: sem=0x{result_value:x}")
+    
+    if result_value == sem_value:
+        print(f"\n  ✓ GPFIFO SEMAPHORE RELEASE PASSED (after kick)")
+        return True
+    
+    # Last resort: try writing the doorbell token to a host1x doorbell register
+    # On some nvgpu implementations, there's a per-channel doorbell at a fixed
+    # MMIO offset that userspace can poke. Let's try /dev/host1x or a raw
+    # memory write approach.
+    print(f"  Trying host1x doorbell mechanism...")
+    
+    # On Jetson nvgpu, the work_submit_token identifies the channel to the GPU
+    # scheduler. The "doorbell" is typically implemented as a write to a fixed
+    # MMIO register. In usermode submit, the kernel should set up the GPU to 
+    # detect GPPut changes directly. Let's read back GPPut/GPGet to see status.
+    gp_get = struct.unpack_from('<I', channel_info['userd_mm'], USERD_GP_GET_OFFSET)[0]
+    gp_put = struct.unpack_from('<I', channel_info['userd_mm'], USERD_GP_PUT_OFFSET)[0]
+    print(f"  GPGet={gp_get}, GPPut={gp_put}")
+    
+    if result_value != sem_value:
+        print(f"\n  ✗ GPFIFO SEMAPHORE RELEASE FAILED")
+        print(f"    Semaphore still 0x{result_value:x}, expected 0x{sem_value:x}")
+        print(f"    Possible causes:")
+        print(f"    - Doorbell mechanism not working (need MMIO write?)")
+        print(f"    - Push buffer format incorrect")
+        print(f"    - Channel not properly enabled")
+        return False
+    
+    return True
+
+
+def test_nvrtc_compile(arch="sm_87"):
+    """Test 14: Compile a trivial CUDA kernel using nvrtc.
+    
+    This proves we can compile PTX -> SASS for the Orin's SM 8.7.
+    Returns the CUBIN info dict on success.
+    """
+    print("\n" + "=" * 60)
+    print("TEST 14: NVRTC SHADER COMPILATION")
+    print("=" * 60)
+    
+    kernel_source = r"""
+extern "C" __global__ void test_kernel(float *out) {
+    int tid = threadIdx.x;
+    out[tid] = (float)(tid * tid + 1);
+}
+"""
+    
+    print(f"  Kernel source:    test_kernel(float *out)")
+    print(f"  Target arch:      {arch}")
+    
+    try:
+        cubin = compile_ptx_to_cubin(kernel_source, arch)
+        print(f"  CUBIN size:       {len(cubin)} bytes")
+    except Exception as e:
+        print(f"  ✗ Compilation failed: {e}")
+        return None
+    
+    # Parse ELF
+    try:
+        info = parse_cubin_elf(cubin)
+        print(f"  .text offset:     0x{info['text_offset']:x}")
+        print(f"  .text size:       {info['text_size']} bytes")
+        print(f"  Register count:   {info['reg_count']}")
+        print(f"  Shared memory:    {info['shared_mem']} bytes")
+        
+        if info['text_size'] > 0:
+            # Print first 16 bytes of SASS (for debugging)
+            sass_preview = ' '.join(f'{b:02x}' for b in info['text_data'][:16])
+            print(f"  SASS preview:     {sass_preview}")
+            print(f"\n  ✓ NVRTC COMPILATION PASSED")
+            return info
+        else:
+            print(f"  ✗ No .text section found in CUBIN")
+            return None
+    except Exception as e:
+        print(f"  ✗ ELF parse failed: {e}")
+        import traceback; traceback.print_exc()
+        return None
+
+
+def test_compute_dispatch(channel_info, allocator, compute_class, cubin_info):
+    """Test 15: Full compute dispatch — compile shader, build QMD, execute, verify.
+    
+    This is the big test. We:
+    1. Upload the compiled CUBIN to GPU memory
+    2. Allocate output buffer
+    3. Build a QMD pointing to the shader and output buffer
+    4. Build push buffer with SET_OBJECT + SEND_PCAS to launch the QMD
+    5. Add a semaphore release after the compute
+    6. Submit via GPFIFO
+    7. Wait for completion
+    8. Read output buffer and verify results
+    """
+    print("\n" + "=" * 60)
+    print("TEST 15: FULL COMPUTE DISPATCH")
+    print("=" * 60)
+    
+    NUM_THREADS = 32  # one warp
+    
+    # 1. Upload CUBIN to GPU memory
+    # We upload the ENTIRE CUBIN ELF (the GPU needs the ELF structure for correct addressing)
+    cubin_data = cubin_info['full_elf']
+    cubin_aligned_size = ((len(cubin_data) + 4095) & ~4095) + 4096  # extra page for safety
+    shader_buf = allocator.alloc(cubin_aligned_size, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(shader_buf)
+    allocator.gpu_map(shader_buf)
+    
+    # Copy CUBIN
+    for i, b in enumerate(cubin_data):
+        shader_buf.cpu_addr[i] = b
+    # IO_COHERENCE: no flush needed
+    
+    # The program address is at the .text section within the ELF
+    prog_addr = shader_buf.gpu_va + cubin_info['text_offset']
+    prog_size = cubin_info['text_size']
+    print(f"  Shader buffer:    gpu_va=0x{shader_buf.gpu_va:012x}, size={cubin_aligned_size}")
+    print(f"  Program address:  0x{prog_addr:012x} (.text offset=0x{cubin_info['text_offset']:x})")
+    
+    # 2. Allocate output buffer (NUM_THREADS * 4 bytes for float32)
+    out_size = max(NUM_THREADS * 4, 4096)
+    output_buf = allocator.alloc(out_size, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(output_buf)
+    allocator.gpu_map(output_buf)
+    
+    # Zero output buffer
+    for i in range(out_size):
+        output_buf.cpu_addr[i] = 0
+    # IO_COHERENCE: no flush needed
+    print(f"  Output buffer:    gpu_va=0x{output_buf.gpu_va:012x}, size={out_size}")
+    
+    # 3. Allocate constant buffer (cbuf0) — stores kernel args
+    # For CUDA: cbuf0 contains kernel parameters
+    # Our kernel takes float *out  — that's an 8-byte pointer
+    cbuf_size = 4096
+    cbuf_buf = allocator.alloc(cbuf_size, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(cbuf_buf)
+    allocator.gpu_map(cbuf_buf)
+    
+    # Write kernel args in cbuf0
+    # The kernel parameter (float *out) is the output buffer GPU VA
+    # CUDA ABI: kernel params start at offset 0x160 in const buffer 0
+    # But for our standalone launch, we need to match what the kernel expects.
+    # The simplest approach: put the pointer at offset 0 of cbuf0
+    # (this matches the basic CUDA calling convention for a single arg)
+    for i in range(cbuf_size):
+        cbuf_buf.cpu_addr[i] = 0
+    struct.pack_into('<Q', cbuf_buf.cpu_addr, 0x160, output_buf.gpu_va)
+    # IO_COHERENCE: no flush needed
+    print(f"  Const buffer:     gpu_va=0x{cbuf_buf.gpu_va:012x}")
+    print(f"  Kernel arg @0x160: output_buf VA = 0x{output_buf.gpu_va:012x}")
+    
+    # 4. Allocate semaphore buffer for completion detection
+    sem_buf = allocator.alloc(4096, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(sem_buf)
+    allocator.gpu_map(sem_buf)
+    struct.pack_into('<Q', sem_buf.cpu_addr, 0, 0)
+    # IO_COHERENCE: no flush needed
+    
+    # 5. Build QMD (256 bytes for V03)
+    qmd_buf = allocator.alloc(4096, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(qmd_buf)
+    allocator.gpu_map(qmd_buf)
+    
+    # QMD must be 256-byte aligned — allocator gives page-aligned (4096)
+    assert qmd_buf.gpu_va % 256 == 0, f"QMD not 256-byte aligned: 0x{qmd_buf.gpu_va:x}"
+    
+    reg_count = cubin_info['reg_count']
+    shmem_size = max(cubin_info['shared_mem'], 0x400)  # minimum 1KB
+    shmem_size = (shmem_size + 127) & ~127  # round up to 128
+    
+    smem_cfg = 1  # 32KB / 4096 + 1 = config
+    for conf_kb in [32, 64, 100]:
+        if conf_kb * 1024 >= shmem_size:
+            smem_cfg = (conf_kb * 1024) // 4096 + 1
+            break
+    
+    qmd = QMDBuilder()
+    qmd.write(
+        qmd_major_version=3,
+        qmd_version=3,  # v03.00
+        qmd_group_id=0x3f,
+        sm_global_caching_enable=1,
+        api_visible_call_limit=1,  # NO_CHECK
+        sampler_index=1,           # VIA_HEADER_INDEX
+        cwd_membar_type=1,         # L1_SYSMEMBAR
+        barrier_count=1,
+        
+        # Grid dimensions (blocks)
+        cta_raster_width=1,
+        cta_raster_height=1,
+        cta_raster_depth=1,
+        
+        # Thread dimensions (threads per block)
+        cta_thread_dimension0=NUM_THREADS,
+        cta_thread_dimension1=1,
+        cta_thread_dimension2=1,
+        
+        # Shader
+        program_address_lower=prog_addr & 0xFFFFFFFF,
+        program_address_upper=(prog_addr >> 32) & 0x1FFFF,
+        register_count_v=reg_count,
+        
+        # Shared memory
+        shared_memory_size=shmem_size,
+        min_sm_config_shared_mem_size=smem_cfg,
+        target_sm_config_shared_mem_size=smem_cfg,
+        max_sm_config_shared_mem_size=0x1a,
+        
+        # Cache invalidation
+        invalidate_texture_header_cache=1,
+        invalidate_texture_sampler_cache=1,
+        invalidate_texture_data_cache=1,
+        invalidate_shader_data_cache=1,
+        invalidate_shader_constant_cache=1,
+        
+        # SM version for Orin (SM 8.7)
+        sass_version=0x87,
+        
+        # Program prefetch
+        program_prefetch_addr_lower_shifted=prog_addr >> 8,
+        program_prefetch_addr_upper_shifted=prog_addr >> 40,
+        program_prefetch_size=min(prog_size >> 8, 0x1ff),
+    )
+    
+    # Set constant buffer 0 (kernel arguments)
+    qmd.set_constant_buf(0, cbuf_buf.gpu_va, cbuf_size)
+    
+    # Write QMD to GPU memory
+    for i, b in enumerate(qmd.data):
+        qmd_buf.cpu_addr[i] = b
+    # IO_COHERENCE: no flush needed
+    
+    print(f"  QMD buffer:       gpu_va=0x{qmd_buf.gpu_va:012x}")
+    print(f"  QMD registers:    {reg_count}")
+    print(f"  QMD shmem:        {shmem_size}")
+    print(f"  QMD grid:         1x1x1")
+    print(f"  QMD threads:      {NUM_THREADS}x1x1")
+    
+    # 6. Build push buffer
+    pb = PushBufferBuilder()
+    
+    # SET_OBJECT for compute (subchannel 1)
+    pb.nvm(1, NVC6C0_SET_OBJECT, compute_class)
+    
+    # Invalidate shader caches (clean state)
+    pb.nvm(1, NVC6C0_INVALIDATE_SHADER_CACHES_NO_WFI, 0x17)  # inst + global + const + data + uniform
+    
+    # SEND_PCAS_A: launch the QMD
+    pb.nvm(1, NVC6C0_SEND_PCAS_A, qmd_buf.gpu_va >> 8)
+    
+    # SEND_SIGNALING_PCAS2_B: action = 9 (PREFETCH_SCHEDULE)
+    pb.nvm(1, NVC6C0_SEND_SIGNALING_PCAS2_B, 9)
+    
+    # Semaphore release to signal completion (subchannel 0 = channel/GPFIFO class)
+    sem_addr = sem_buf.gpu_va
+    sem_value = 0xDEAD
+    pb.nvm(0, NVC56F_SEM_ADDR_LO,
+           sem_addr & 0xFFFFFFFF,
+           (sem_addr >> 32) & 0xFF,
+           sem_value & 0xFFFFFFFF,
+           0,  # SEM_PAYLOAD_HI
+           NVC56F_SEM_EXECUTE_OPERATION_RELEASE | NVC56F_SEM_EXECUTE_RELEASE_WFI_EN | NVC56F_SEM_EXECUTE_PAYLOAD_SIZE_64BIT)
+    
+    # Write push buffer to GPU memory
+    pushbuf = allocator.alloc(4096, flags=NVMAP_HANDLE_INNER_CACHEABLE)
+    allocator.mmap_buffer(pushbuf)
+    allocator.gpu_map(pushbuf)
+    pb_bytes = pb.get_bytes()
+    for i, b in enumerate(pb_bytes):
+        pushbuf.cpu_addr[i] = b
+    # IO_COHERENCE: no flush needed
+    
+    print(f"  Push buffer:      {len(pb)} words, gpu_va=0x{pushbuf.gpu_va:012x}")
+    
+    # 7. Submit!
+    print(f"\n  Submitting to GPFIFO...")
+    submit_pushbuf(channel_info, pushbuf.gpu_va, len(pb))
+    
+    # 8. Wait for completion
+    timeout_ms = 5000
+    start = time.time()
+    while (time.time() - start) * 1000 < timeout_ms:
+        result = struct.unpack_from('<Q', sem_buf.cpu_addr, 0)[0]
+        if result == sem_value:
+            break
+        time.sleep(0.001)
+    
+    elapsed = (time.time() - start) * 1000
+    sem_result = struct.unpack_from('<Q', sem_buf.cpu_addr, 0)[0]
+    
+    if sem_result != sem_value:
+        print(f"  ✗ TIMEOUT after {elapsed:.0f}ms: sem=0x{sem_result:x} (expected 0x{sem_value:x})")
+        gp_get = struct.unpack_from('<I', channel_info['userd_mm'], USERD_GP_GET_OFFSET)[0]
+        gp_put = struct.unpack_from('<I', channel_info['userd_mm'], USERD_GP_PUT_OFFSET)[0]
+        print(f"  GPGet={gp_get}, GPPut={gp_put}")
+        print(f"\n  ✗ COMPUTE DISPATCH FAILED")
+        return False
+    
+    print(f"  Semaphore:        0x{sem_result:x} (completion after {elapsed:.1f}ms)")
+    
+    # 9. Verify output!
+    print(f"\n  Verifying output buffer...")
+    errors = 0
+    for i in range(NUM_THREADS):
+        expected = float(i * i + 1)
+        actual = struct.unpack_from('<f', output_buf.cpu_addr, i * 4)[0]
+        if abs(actual - expected) > 0.001:
+            if errors < 5:
+                print(f"    [thread {i}] expected {expected}, got {actual}")
+            errors += 1
+    
+    if errors == 0:
+        # Print a few values for verification
+        values = [struct.unpack_from('<f', output_buf.cpu_addr, i * 4)[0] for i in range(min(8, NUM_THREADS))]
+        print(f"  Output[0:8]:      {values}")
+        print(f"\n  ✓ COMPUTE DISPATCH PASSED — {NUM_THREADS} values correct!")
+        return True
+    else:
+        print(f"\n  ✗ COMPUTE DISPATCH FAILED — {errors}/{NUM_THREADS} wrong values")
+        values = [struct.unpack_from('<f', output_buf.cpu_addr, i * 4)[0] for i in range(min(8, NUM_THREADS))]
+        print(f"  Output[0:8]:      {values}")
+        return False
 
 def main():
     print("=" * 60)
-    print("Phase 1+2: Direct nvgpu/nvmap ioctl test")
+    print("Phase 1+2+3: Direct nvgpu/nvmap ioctl test")
     print("Phase 1: GPU access WITHOUT CUDA")
     print("Phase 2: Memory management — mmap, coherence, TegraAllocator")
+    print("Phase 3: Command submission — GPFIFO, QMD, compute dispatch")
     print("=" * 60)
 
     # Open devices
@@ -1593,6 +2472,7 @@ def main():
     # Test 7: Full channel + compute class setup
     total_tests += 1
     compute_class = chars.compute_class if chars else 0xc7c0
+    channel_info = None
     if as_fd is not None:
         try:
             channel_info = test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class)
@@ -1659,6 +2539,68 @@ def main():
         print("  ✗ Cacheable flags test skipped (AS not available)")
 
     # ========================================================================
+    # Phase 3 Tests (12-15)
+    # ========================================================================
+    print("\n" + "=" * 60)
+    print("PHASE 3: Command Submission — GPFIFO, QMD, compute dispatch")
+    print("=" * 60)
+
+    # Test 12: mmap userd + GPFIFO buffers
+    total_tests += 1
+    if channel_info is not None:
+        try:
+            if test_mmap_userd_gpfifo(channel_info, nvmap_fd):
+                success_count += 1
+        except Exception as e:
+            print(f"  ✗ mmap userd/GPFIFO FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("  ✗ mmap userd/GPFIFO skipped (no channel)")
+
+    # Create a TegraAllocator for Phase 3 buffer allocations
+    phase3_allocator = TegraAllocator(nvmap_fd, as_fd) if as_fd is not None else None
+
+    # Test 13: GPFIFO semaphore release
+    total_tests += 1
+    if channel_info is not None and 'userd_mm' in channel_info and phase3_allocator is not None:
+        try:
+            if test_gpfifo_semaphore_release(channel_info, phase3_allocator, compute_class):
+                success_count += 1
+        except Exception as e:
+            print(f"  ✗ GPFIFO semaphore release FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("  ✗ GPFIFO semaphore release skipped (no channel or userd)")
+
+    # Test 14: nvrtc compile
+    total_tests += 1
+    cubin_info = None
+    try:
+        cubin_info = test_nvrtc_compile(arch="sm_87")
+        if cubin_info is not None:
+            success_count += 1
+    except Exception as e:
+        print(f"  ✗ nvrtc compile FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Test 15: Full compute dispatch
+    total_tests += 1
+    if (channel_info is not None and 'userd_mm' in channel_info 
+        and phase3_allocator is not None and cubin_info is not None):
+        try:
+            if test_compute_dispatch(channel_info, phase3_allocator, compute_class, cubin_info):
+                success_count += 1
+        except Exception as e:
+            print(f"  ✗ Compute dispatch FAILED: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("  ✗ Compute dispatch skipped (missing channel, allocator, or cubin)")
+
+    # ========================================================================
     # Summary
     # ========================================================================
     print(f"\n{'=' * 60}")
@@ -1678,12 +2620,26 @@ def main():
         print("  9. Multi-size buffers (4KB → 64MB) all work with GPU VA")
         print("  10. CACHEABLE and WRITE_COMBINE flags both functional")
         print("  11. TegraAllocator class handles full lifecycle")
-        print("\nNEXT: Phase 3 — Compute dispatch (push methods via GPFIFO)")
+        print("\nPhase 3 proven:")
+        print("  12. userd + GPFIFO mmapped for direct CPU access")
+        print("  13. GPFIFO submission works — GPU processes push buffers")
+        print("  14. nvrtc compiles PTX → CUBIN for SM 8.7")
+        print("  15. Compute shader dispatched via QMD — results verified!")
     else:
+        # Report per-phase status
+        p1_ok = success_count >= 7
+        p2_ok = success_count >= 11
+        p3_ok = success_count >= 15
+        if success_count >= 11:
+            print(f"\nPhase 1+2: PASSED  Phase 3: {success_count - 11}/4 tests passed")
+        elif success_count >= 7:
+            print(f"\nPhase 1: PASSED  Phase 2: {success_count - 7}/4 tests passed")
         print("Some tests failed — check errors above")
     print(f"{'=' * 60}")
 
     # Cleanup
+    if phase3_allocator is not None:
+        phase3_allocator.free_all()
     if as_fd is not None:
         os.close(as_fd)
     os.close(ctrl_fd)
