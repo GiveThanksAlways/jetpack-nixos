@@ -62,61 +62,128 @@ def nv_ioctl(fd, ioc_code, buf):
 # ============================================================================
 
 class nvgpu_gpu_characteristics(ctypes.Structure):
-    """From nvgpu-ctrl.h — returned by GET_CHARACTERISTICS."""
-    _pack_ = 1
+    """From nvgpu-ctrl.h — returned by GET_CHARACTERISTICS.
+    
+    MUST match the kernel struct exactly (natural alignment on aarch64).
+    No _pack_ = 1 because the kernel uses natural alignment!
+    """
     _fields_ = [
-        ("arch",                 c_uint32),
-        ("impl",                 c_uint32),
-        ("rev",                  c_uint32),
-        ("num_gpc",              c_uint32),
-        ("L2_cache_size",        c_uint64),
-        ("on_board_video_memory_size", c_uint64),
-        ("num_tpc_per_gpc",      c_uint32),
-        ("bus_type",             c_uint32),
-        ("big_page_size",        c_uint32),
-        ("compression_stat_count", c_uint32),
-        ("pde_coverage_bit_count", c_uint32),
-        ("available_big_page_sizes", c_uint32),
-        ("gpc_mask",             c_uint64),
-        ("sm_arch_sm_version",   c_uint32),
-        ("sm_arch_spa_version",  c_uint32),
-        ("sm_arch_warp_count",   c_uint32),
-        ("gpu_va_bit_count",     c_uint32),
-        ("reserved",             c_uint32),
-        ("flags",                c_uint64),
-        ("twod_class",           c_uint32),
-        ("threed_class",         c_uint32),
-        ("compute_class",        c_uint32),
-        ("gpfifo_class",         c_uint32),
-        ("inline_to_memory_class", c_uint32),
-        ("dma_copy_class",       c_uint32),
-        ("max_fbps_count",       c_uint32),
-        ("fbp_en_mask",          c_uint32),
-        ("max_ltc_per_fbp",      c_uint32),
-        ("max_lts_per_ltc",      c_uint32),
-        ("max_tex_per_tpc",      c_uint32),
-        ("max_gpc_count",        c_uint32),
-        ("rop_l2_en_mask_0",     c_uint32),
-        ("rop_l2_en_mask_1",     c_uint32),
-        ("chipname",             c_uint32 * 8),
-        ("gr_compbit_store_base_hw", c_uint64),
+        # offset 0
+        ("arch",                      c_uint32),
+        ("impl",                      c_uint32),
+        ("rev",                       c_uint32),
+        ("num_gpc",                   c_uint32),
+        # offset 16
+        ("numa_domain_id",            c_int32),    # __s32, -1 = no NUMA info
+        # 4 bytes padding inserted by compiler for u64 alignment
+        ("_pad0",                     c_uint32),
+        # offset 24
+        ("L2_cache_size",             c_uint64),   # bytes
+        ("on_board_video_memory_size", c_uint64),  # bytes
+        # offset 40
+        ("num_tpc_per_gpc",           c_uint32),   # architectural max
+        ("bus_type",                  c_uint32),
+        ("big_page_size",             c_uint32),   # default big page size
+        ("compression_page_size",     c_uint32),
+        # offset 56
+        ("pde_coverage_bit_count",    c_uint32),
+        ("available_big_page_sizes",  c_uint32),
+        # offset 64
+        ("flags",                     c_uint64),
+        # offset 72
+        ("twod_class",                c_uint32),
+        ("threed_class",              c_uint32),
+        ("compute_class",             c_uint32),
+        ("gpfifo_class",              c_uint32),
+        ("inline_to_memory_class",    c_uint32),
+        ("dma_copy_class",            c_uint32),
+        # offset 96
+        ("gpc_mask",                  c_uint32),   # u32, NOT u64!
+        ("sm_arch_sm_version",        c_uint32),
+        ("sm_arch_spa_version",       c_uint32),
+        ("sm_arch_warp_count",        c_uint32),
+        # offset 112
+        ("gpu_ioctl_nr_last",         c_int16),
+        ("tsg_ioctl_nr_last",         c_int16),
+        ("dbg_gpu_ioctl_nr_last",     c_int16),
+        ("ioctl_channel_nr_last",     c_int16),
+        ("as_ioctl_nr_last",          c_int16),
+        # offset 122
+        ("gpu_va_bit_count",          c_uint8),
+        ("reserved",                  c_uint8),
+        # offset 124
+        ("max_fbps_count",            c_uint32),
+        ("fbp_en_mask",               c_uint32),
+        ("emc_en_mask",               c_uint32),
+        ("max_ltc_per_fbp",           c_uint32),
+        ("max_lts_per_ltc",           c_uint32),
+        ("max_tex_per_tpc",           c_uint32),
+        ("max_gpc_count",             c_uint32),
+        # offset 152
+        ("rop_l2_en_mask_DEPRECATED", c_uint32 * 2),
+        # offset 160
+        ("chipname",                  c_uint8 * 8),
+        # offset 168
+        ("gr_compbit_store_base_hw",  c_uint64),
+        # offset 176
         ("gr_gobs_per_comptagline_per_slice", c_uint32),
-        ("num_ltc",              c_uint32),
-        ("lts_per_ltc",          c_uint32),
-        ("cbc_cache_line_size",  c_uint32),
-        ("cbc_comptags_per_line", c_uint32),
-        ("padding", c_uint32),
-        ("sm_version", c_uint32),
-        ("max_gpfifo_entries", c_uint32),
-        ("device_instance_id", c_uint32),
-        # There may be more fields, but we pad to be safe
-        ("_pad_to_256", c_uint8 * 64),
+        ("num_ltc",                   c_uint32),
+        ("lts_per_ltc",               c_uint32),
+        ("cbc_cache_line_size",       c_uint32),
+        ("cbc_comptags_per_line",     c_uint32),
+        ("map_buffer_batch_limit",    c_uint32),
+        # offset 200
+        ("max_freq",                  c_uint64),
+        # offset 208
+        ("graphics_preemption_mode_flags", c_uint32),
+        ("compute_preemption_mode_flags",  c_uint32),
+        ("default_graphics_preempt_mode",  c_uint32),
+        ("default_compute_preempt_mode",   c_uint32),
+        # offset 224
+        ("local_video_memory_size",   c_uint64),  # non-zero only for dGPUs
+        # offset 232
+        ("pci_vendor_id",             c_uint16),
+        ("pci_device_id",             c_uint16),
+        ("pci_subsystem_vendor_id",   c_uint16),
+        ("pci_subsystem_device_id",   c_uint16),
+        ("pci_class",                 c_uint16),
+        ("pci_revision",              c_uint8),
+        ("vbios_oem_version",         c_uint8),
+        ("vbios_version",             c_uint32),
+        # offset 248
+        ("reg_ops_limit",             c_uint32),
+        ("reserved1",                 c_uint32),
+        # offset 256
+        ("event_ioctl_nr_last",       c_int16),
+        ("pad",                       c_uint16),
+        ("max_css_buffer_size",       c_uint32),
+        # offset 264
+        ("ctxsw_ioctl_nr_last",       c_int16),
+        ("prof_ioctl_nr_last",        c_int16),
+        ("nvs_ioctl_nr_last",         c_int16),
+        ("reserved2",                 c_uint8 * 2),
+        # offset 272
+        ("max_ctxsw_ring_buffer_size", c_uint32),
+        ("reserved3",                 c_uint32),
+        # offset 280
+        ("per_device_identifier",     c_uint64),
+        # offset 288
+        ("num_ppc_per_gpc",           c_uint32),
+        ("max_veid_count_per_tsg",    c_uint32),
+        ("num_sub_partition_per_fbpa", c_uint32),
+        ("gpu_instance_id",           c_uint32),
+        ("gr_instance_id",            c_uint32),
+        ("max_gpfifo_entries",        c_uint32),
+        ("max_dbg_tsg_timeslice",     c_uint32),
+        ("reserved5",                 c_uint32),
+        # offset 320
+        ("device_instance_id",        c_uint64),
+        # Total: 328 bytes
     ]
 
 
 class nvgpu_gpu_get_characteristics(ctypes.Structure):
     """Wrapper for GET_CHARACTERISTICS ioctl."""
-    _pack_ = 1
     _fields_ = [
         ("gpu_characteristics_buf_size", c_uint64),
         ("gpu_characteristics_buf_addr", c_uint64),
@@ -128,7 +195,6 @@ NVGPU_GPU_IOCTL_GET_CHARACTERISTICS = _IOWR('G', 5, ctypes.sizeof(nvgpu_gpu_get_
 
 
 class nvgpu_gpu_zcull_get_ctx_size_args(ctypes.Structure):
-    _pack_ = 1
     _fields_ = [("size", c_uint32)]
 
 NVGPU_GPU_IOCTL_ZCULL_GET_CTX_SIZE = _IOR('G', 1, ctypes.sizeof(nvgpu_gpu_zcull_get_ctx_size_args))
@@ -139,25 +205,27 @@ NVGPU_GPU_IOCTL_ZCULL_GET_CTX_SIZE = _IOR('G', 1, ctypes.sizeof(nvgpu_gpu_zcull_
 # ============================================================================
 
 class nvmap_create_handle(ctypes.Structure):
-    """NVMAP_IOC_CREATE: create a memory handle."""
-    _pack_ = 1
+    """NVMAP_IOC_CREATE: create a memory handle.
+    Also used by NVMAP_IOC_GET_FD (nr=15) and NVMAP_IOC_FROM_FD (nr=16)."""
     _fields_ = [
-        ("size",   c_uint32),   # in: requested size
-        ("handle", c_uint32),   # out: handle id
+        ("size",   c_uint32),   # in: requested size (CREATE) / unused (GET_FD)
+        ("handle", c_uint32),   # out: handle id (CREATE) / in: handle (GET_FD)
     ]
 
 NVMAP_IOC_CREATE = _IOWR('N', 0, ctypes.sizeof(nvmap_create_handle))
 
 
 class nvmap_alloc_handle(ctypes.Structure):
-    """NVMAP_IOC_ALLOC: back a handle with physical memory."""
-    _pack_ = 1
+    """NVMAP_IOC_ALLOC: back a handle with physical memory.
+    sizeof = 20 (0x14) matching strace observation."""
+    _pack_ = 1  # pack=1 is correct here: struct is 17+3pad = 20 bytes
     _fields_ = [
         ("handle",    c_uint32),  # in: handle from CREATE
         ("heap_mask", c_uint32),  # in: which heap(s) to use
         ("flags",     c_uint32),  # in: allocation flags
         ("align",     c_uint32),  # in: alignment requirement
-        ("padding",   c_uint32),  # padding to match 0x14 = 20 bytes
+        ("kind",      c_uint8),   # in: memory kind (0 = pitch)
+        ("_pad",      c_uint8 * 3),  # trailing padding to match C sizeof = 20
     ]
 
 # Heap masks from nvmap.h
@@ -176,12 +244,10 @@ NVMAP_IOC_ALLOC = _IOW('N', 3, ctypes.sizeof(nvmap_alloc_handle))
 
 class nvmap_handle_param(ctypes.Structure):
     """NVMAP_IOC_PARAM: query handle parameters."""
-    _pack_ = 1
     _fields_ = [
         ("handle", c_uint32),
         ("param",  c_uint32),   # which param to query
-        ("result", c_uint32),   # out: result
-        ("_pad",   c_uint32),
+        ("result", c_uint64),   # out: result (u64 in kernel)
     ]
 
 # Param types
@@ -195,23 +261,16 @@ NVMAP_HANDLE_PARAM_COMPR      = 6
 NVMAP_IOC_PARAM = _IOWR('N', 8, ctypes.sizeof(nvmap_handle_param))
 
 
-class nvmap_get_fd_args(ctypes.Structure):
-    """NVMAP_IOC_GET_FD: convert handle to dmabuf fd."""
-    _pack_ = 1
-    _fields_ = [
-        ("handle", c_uint32),
-        ("fd",     c_uint32),   # out: dmabuf fd
-    ]
+# NVMAP_IOC_GET_FD uses nvmap_create_handle struct
+# handle field = input handle, size field reused as output fd
 
-NVMAP_IOC_GET_FD = _IOWR('N', 15, ctypes.sizeof(nvmap_get_fd_args))
+NVMAP_IOC_GET_FD = _IOWR('N', 15, ctypes.sizeof(nvmap_create_handle))
 
 
 class nvmap_available_heaps(ctypes.Structure):
     """NVMAP_IOC_GET_AVAILABLE_HEAPS"""
-    _pack_ = 1
     _fields_ = [
-        ("heaps",  c_uint32),
-        ("_pad",   c_uint32),
+        ("heaps",  c_uint64),   # u64 bitmask, NOT u32!
     ]
 
 NVMAP_IOC_GET_AVAILABLE_HEAPS = _IOR('N', 25, ctypes.sizeof(nvmap_available_heaps))
@@ -250,32 +309,51 @@ def test_get_characteristics(ctrl_fd):
     print(f"  Implementation:   0x{chars.impl:04x}")
     print(f"  Revision:         {chars.rev}")
     print(f"  Num GPC:          {chars.num_gpc}")
-    print(f"  L2 cache size:    {chars.L2_cache_size // 1024} KB")
+    print(f"  NUMA domain:      {chars.numa_domain_id}")
+    print(f"  L2 cache size:    {chars.L2_cache_size} bytes ({chars.L2_cache_size // 1024} KB)")
     print(f"  VRAM size:        {chars.on_board_video_memory_size} bytes")
+    print(f"  Num TPC/GPC:      {chars.num_tpc_per_gpc}")
     print(f"  Bus type:         {chars.bus_type}")
     print(f"  Big page size:    {chars.big_page_size}")
-    print(f"  GPC mask:         0x{chars.gpc_mask:016x}")
+    print(f"  Compr page size:  {chars.compression_page_size}")
+    print(f"  GPU VA bits:      {chars.gpu_va_bit_count}")
+    print(f"  GPC mask:         0x{chars.gpc_mask:08x}")
     print(f"  SM arch version:  0x{chars.sm_arch_sm_version:08x}")
     print(f"  SM arch SPA ver:  0x{chars.sm_arch_spa_version:08x}")
     print(f"  SM arch warp cnt: {chars.sm_arch_warp_count}")
-    print(f"  GPU VA bits:      {chars.gpu_va_bit_count}")
     print(f"  Flags:            0x{chars.flags:016x}")
 
-    # Decode flags
+    # Decode flags (from nvgpu-ctrl.h)
     flag_names = {
-        (1 << 0): "SUPPORT_PARTIAL_MAPPINGS",
-        (1 << 1): "SUPPORT_SPARSE_ALLOCS",
-        (1 << 2): "SUPPORT_SYNC_FENCE_FDS",
-        (1 << 3): "SUPPORT_CYCLE_STATS",
-        (1 << 4): "SUPPORT_CYCLE_STATS_SNAPSHOT",
-        (1 << 5): "SUPPORT_USERMODE_SUBMIT",
-        (1 << 6): "SUPPORT_IO_COHERENCE",
-        (1 << 12): "SUPPORT_COMPUTE",
+        (1 << 0):  "SUPPORT_PARTIAL_MAPPINGS",
+        (1 << 1):  "SUPPORT_SPARSE_ALLOCS",
+        (1 << 2):  "SUPPORT_SYNC_FENCE_FDS",
+        (1 << 3):  "SUPPORT_CYCLE_STATS",
+        (1 << 4):  "SUPPORT_CYCLE_STATS_SNAPSHOT",
+        (1 << 5):  "SUPPORT_USERMODE_SUBMIT",  # bit 5 in old headers
+        (1 << 6):  "SUPPORT_CLOCK_CONTROLS",
+        (1 << 7):  "SUPPORT_GET_VOLTAGE",
+        (1 << 8):  "SUPPORT_GET_CURRENT",
+        (1 << 9):  "SUPPORT_GET_POWER",
+        (1 << 10): "SUPPORT_GET_TEMPERATURE",
+        (1 << 11): "SUPPORT_SET_THERM_ALERT_LIMIT",
         (1 << 14): "SUPPORT_TSG",
-        (1 << 20): "SUPPORT_DETERMINISTIC_SUBMIT_NO_JOBTRACKING",
-        (1 << 21): "SUPPORT_DETERMINISTIC_SUBMIT_FULL",
-        (1 << 22): "SUPPORT_DETERMINISTIC_OPTS",
-        (1 << 24): "SUPPORT_DEVICE_EVENTS",
+        (1 << 15): "SUPPORT_DEVICE_EVENTS",
+        (1 << 16): "SUPPORT_FECS_CTXSW_TRACE",
+        (1 << 18): "SUPPORT_DETERMINISTIC_SUBMIT_NO_JOBTRACKING",
+        (1 << 19): "SUPPORT_DETERMINISTIC_SUBMIT_FULL",
+        (1 << 20): "SUPPORT_IO_COHERENCE",
+        (1 << 21): "SUPPORT_RESCHEDULE_RUNLIST",
+        (1 << 22): "SUPPORT_TSG_SUBCONTEXTS",
+        (1 << 24): "SUPPORT_DETERMINISTIC_OPTS",
+        (1 << 25): "SUPPORT_SCG",
+        (1 << 26): "SUPPORT_SYNCPOINT_ADDRESS",
+        (1 << 27): "SUPPORT_VPR",
+        (1 << 28): "SUPPORT_USER_SYNCPOINT",
+        (1 << 29): "CAN_RAILGATE",
+        (1 << 30): "SUPPORT_USERMODE_SUBMIT",  # bit 30
+        (1 << 42): "SUPPORT_COMPUTE",
+        (1 << 57): "SUPPORT_GPU_MMIO",
     }
     set_flags = []
     for bit, name in flag_names.items():
@@ -299,11 +377,18 @@ def test_get_characteristics(ctrl_fd):
     print(f"  Max LTS/LTC:      {chars.max_lts_per_ltc}")
     print(f"  Num LTC:          {chars.num_ltc}")
     print(f"  Max GPFIFO:       {chars.max_gpfifo_entries}")
+    print(f"  Max freq:         {chars.max_freq} Hz ({chars.max_freq / 1e6:.0f} MHz)")
 
     chipname_bytes = bytes(chars.chipname)
     chipname_str = chipname_bytes.split(b'\0')[0].decode('ascii', errors='replace')
     if chipname_str:
         print(f"  Chip name:        {chipname_str}")
+
+    print(f"\n  === IOCTL interface levels ===")
+    print(f"  GPU ioctl last:   {chars.gpu_ioctl_nr_last}")
+    print(f"  TSG ioctl last:   {chars.tsg_ioctl_nr_last}")
+    print(f"  Channel last:     {chars.ioctl_channel_nr_last}")
+    print(f"  AS ioctl last:    {chars.as_ioctl_nr_last}")
 
     return chars
 
@@ -327,26 +412,40 @@ def test_nvmap_create_alloc(nvmap_fd, size=4096):
     create.handle = 0
     nv_ioctl(nvmap_fd, NVMAP_IOC_CREATE, create)
     handle = create.handle
-    print(f"  Created handle:   {handle}")
+    print(f"  Created handle:   {handle} (0x{handle:08x})")
 
-    # Step 2: Allocate physical memory
-    alloc = nvmap_alloc_handle()
-    alloc.handle = handle
-    alloc.heap_mask = NVMAP_HEAP_SYSMEM   # System memory (unified on Jetson)
-    alloc.flags = NVMAP_HANDLE_WRITE_COMBINE
-    alloc.align = 4096
-    alloc.padding = 0
-    nv_ioctl(nvmap_fd, NVMAP_IOC_ALLOC, alloc)
-    print(f"  Allocated on heap SYSMEM, alignment={alloc.align}")
-
-    # Step 3: Get dmabuf fd
-    get_fd = nvmap_get_fd_args()
-    get_fd.handle = handle
-    get_fd.fd = 0
-    nv_ioctl(nvmap_fd, NVMAP_IOC_GET_FD, get_fd)
-    print(f"  Got dmabuf fd:    {get_fd.fd}")
-
-    return handle, get_fd.fd
+    # Step 2: Try various heaps
+    heap_options = [
+        (NVMAP_HEAP_IOVMM, "IOVMM"),
+        (NVMAP_HEAP_SYSMEM, "SYSMEM"),
+        ((1 << 3), "CARVEOUT_GPU"),
+        ((1 << 0), "CARVEOUT_GENERIC"),
+        (0xFFFFFFFF, "ALL (0xFFFFFFFF)"),
+    ]
+    
+    for heap_mask, heap_name in heap_options:
+        alloc = nvmap_alloc_handle()
+        alloc.handle = handle
+        alloc.heap_mask = heap_mask
+        alloc.flags = NVMAP_HANDLE_WRITE_COMBINE
+        alloc.align = 4096
+        alloc.kind = 0  # pitch linear
+        try:
+            nv_ioctl(nvmap_fd, NVMAP_IOC_ALLOC, alloc)
+            print(f"  Allocated with heap={heap_name} (0x{heap_mask:08x}), alignment={alloc.align}")
+            
+            # Step 3: Get dmabuf fd (uses same struct as CREATE)
+            get_fd = nvmap_create_handle()
+            get_fd.handle = handle  # input: the handle
+            get_fd.size = 0         # output: will be overwritten with fd
+            nv_ioctl(nvmap_fd, NVMAP_IOC_GET_FD, get_fd)
+            dmabuf_fd = get_fd.size  # fd is returned in the 'size' field
+            print(f"  Got dmabuf fd:    {dmabuf_fd}")
+            return handle, dmabuf_fd
+        except OSError as e:
+            print(f"  Heap {heap_name} (0x{heap_mask:08x}) failed: {e}")
+    
+    raise RuntimeError("All heap options failed")
 
 
 def test_nvmap_heaps(nvmap_fd):
@@ -358,14 +457,19 @@ def test_nvmap_heaps(nvmap_fd):
     heap_names = {
         (1 << 31): "SYSMEM",
         (1 << 30): "IOVMM",
-        1:         "CARVEOUT_GENERIC",
-        (1 << 1):  "CARVEOUT_VPR",
+        (1 << 28): "CARVEOUT_VPR",
+        (1 << 27): "CARVEOUT_TSEC",
+        (1 << 26): "CARVEOUT_VIDMEM",
+        (1 << 3):  "CARVEOUT_GPU",
+        (1 << 2):  "CARVEOUT_FSI",
+        (1 << 1):  "CARVEOUT_IVM",
+        (1 << 0):  "CARVEOUT_GENERIC",
     }
-    print(f"  Heap bitmask:     0x{args.heaps:08x}")
+    print(f"  Heap bitmask:     0x{args.heaps:016x}")
     available = []
-    for bit, name in heap_names.items():
+    for bit, name in sorted(heap_names.items()):
         if args.heaps & bit:
-            available.append(name)
+            available.append(f"{name} (1<<{bit.bit_length()-1})")
     print(f"  Available heaps:  {', '.join(available) if available else 'none decoded'}")
     return args.heaps
 
