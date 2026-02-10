@@ -360,11 +360,9 @@ NVGPU_GPU_IOCTL_OPEN_TSG = _IOWR('G', 9, ctypes.sizeof(nvgpu_gpu_open_tsg_args))
 class nvgpu_tsg_bind_channel_ex_args(ctypes.Structure):
     """Bind a channel to a TSG."""
     _fields_ = [
-        ("channel_fd",  c_int32),
-        ("padding",     c_uint32),
-        ("subctx_id",   c_uint64),
-        ("num_active_channels", c_uint32),     
-        ("_pad",        c_uint32),
+        ("channel_fd",     c_int32),
+        ("subcontext_id",  c_uint32),  # in: VEID from CREATE_SUBCONTEXT
+        ("reserved",       c_uint8 * 16),
     ]
 
 NVGPU_TSG_IOCTL_BIND_CHANNEL_EX = _IOWR('T', 11, ctypes.sizeof(nvgpu_tsg_bind_channel_ex_args))
@@ -429,10 +427,11 @@ class nvgpu_channel_setup_bind_args(ctypes.Structure):
 NVGPU_IOCTL_CHANNEL_SETUP_BIND = _IOWR('H', 128, ctypes.sizeof(nvgpu_channel_setup_bind_args))
 
 # SETUP_BIND flags
-NVGPU_CHANNEL_SETUP_BIND_FLAGS_SUPPORT_VPR          = (1 << 0)
-NVGPU_CHANNEL_SETUP_BIND_FLAGS_SUPPORT_DETERMINISTIC = (1 << 1)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_VPR_ENABLED          = (1 << 0)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_DETERMINISTIC        = (1 << 1)
 NVGPU_CHANNEL_SETUP_BIND_FLAGS_REPLAYABLE_FAULTS_ENABLE = (1 << 2)
 NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_SUPPORT     = (1 << 3)
+NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_GPU_MAP_RESOURCES_SUPPORT = (1 << 4)
 
 class nvgpu_set_error_notifier(ctypes.Structure):
     _fields_ = [
@@ -454,9 +453,9 @@ NVGPU_IOCTL_CHANNEL_WDT = _IOW('H', 119, ctypes.sizeof(nvgpu_channel_wdt_args))
 
 class nvgpu_get_user_syncpoint_args(ctypes.Structure):
     _fields_ = [
-        ("syncpoint_id",    c_uint32),
-        ("syncpoint_value", c_uint32),
-        ("gpu_va",          c_uint64),
+        ("gpu_va",          c_uint64),   # out: GPU VA of syncpoint
+        ("syncpoint_id",    c_uint32),   # out: syncpoint ID
+        ("syncpoint_max",   c_uint32),   # out: max syncpoint value
     ]
 
 NVGPU_IOCTL_CHANNEL_GET_USER_SYNCPOINT = _IOR('H', 126, ctypes.sizeof(nvgpu_get_user_syncpoint_args))
@@ -713,20 +712,20 @@ def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
     # 3. Open channel
     ch_fd = test_open_channel(ctrl_fd)
 
-    # 4. Bind channel to TSG
-    print("\n=== BIND_CHANNEL_EX ===")
-    bind = nvgpu_tsg_bind_channel_ex_args()
-    bind.channel_fd = ch_fd
-    bind.subctx_id = subctx.subctx_id
-    nv_ioctl(tsg_fd, NVGPU_TSG_IOCTL_BIND_CHANNEL_EX, bind)
-    print(f"  Bound channel {ch_fd} to TSG {tsg_fd}")
-
-    # 5. Bind channel to AS
+    # 4. Bind channel to AS (must be before TSG bind!)
     print("\n=== AS BIND_CHANNEL ===")
     as_bind = nvgpu_as_bind_channel_args()
     as_bind.channel_fd = ch_fd
     nv_ioctl(as_fd, NVGPU_AS_IOCTL_BIND_CHANNEL, as_bind)
     print(f"  Bound channel {ch_fd} to AS {as_fd}")
+
+    # 5. Bind channel to TSG
+    print("\n=== BIND_CHANNEL_EX ===")
+    bind = nvgpu_tsg_bind_channel_ex_args()
+    bind.channel_fd = ch_fd
+    bind.subcontext_id = subctx.veid
+    nv_ioctl(tsg_fd, NVGPU_TSG_IOCTL_BIND_CHANNEL_EX, bind)
+    print(f"  Bound channel {ch_fd} to TSG {tsg_fd}")
 
     # 6. Disable watchdog
     print("\n=== CHANNEL WDT (disable) ===")
@@ -785,7 +784,7 @@ def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
     setup.gpfifo_dmabuf_offset = 0
     setup.userd_dmabuf_fd = userd_dmabuf_fd
     setup.userd_dmabuf_offset = 0
-    setup.flags = NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_SUPPORT
+    setup.flags = NVGPU_CHANNEL_SETUP_BIND_FLAGS_USERMODE_SUPPORT | NVGPU_CHANNEL_SETUP_BIND_FLAGS_DETERMINISTIC
     nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_SETUP_BIND, setup)
     print(f"  Work submit token: {setup.work_submit_token}")
     print(f"  GPFIFO GPU VA:     0x{setup.gpfifo_gpu_va:012x}")
@@ -797,7 +796,7 @@ def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
     syncpt = nvgpu_get_user_syncpoint_args()
     nv_ioctl(ch_fd, NVGPU_IOCTL_CHANNEL_GET_USER_SYNCPOINT, syncpt)
     print(f"  Syncpoint ID:     {syncpt.syncpoint_id}")
-    print(f"  Syncpoint value:  {syncpt.syncpoint_value}")
+    print(f"  Syncpoint max:    {syncpt.syncpoint_max}")
     print(f"  GPU VA:           0x{syncpt.gpu_va:012x}")
 
     # 10. Allocate compute class!
