@@ -372,9 +372,15 @@ NVGPU_TSG_IOCTL_BIND_CHANNEL_EX = _IOWR('T', 11, ctypes.sizeof(nvgpu_tsg_bind_ch
 class nvgpu_tsg_create_subcontext_args(ctypes.Structure):
     """Create a subcontext within a TSG."""
     _fields_ = [
-        ("subctx_id", c_uint64),  # out: new subcontext ID
-        ("_pad",      c_uint64),
+        ("type",     c_uint32),   # in: SYNC(0) or ASYNC(1)
+        ("as_fd",    c_int32),    # in: address space fd
+        ("veid",     c_uint32),   # out: VEID for the subcontext
+        ("reserved", c_uint32),
     ]
+
+# Subcontext types
+NVGPU_TSG_SUBCONTEXT_TYPE_SYNC  = 0
+NVGPU_TSG_SUBCONTEXT_TYPE_ASYNC = 1
 
 NVGPU_TSG_IOCTL_CREATE_SUBCONTEXT = _IOWR('T', 18, ctypes.sizeof(nvgpu_tsg_create_subcontext_args))
 
@@ -384,11 +390,9 @@ NVGPU_TSG_IOCTL_CREATE_SUBCONTEXT = _IOWR('T', 18, ctypes.sizeof(nvgpu_tsg_creat
 # ============================================================================
 
 class nvgpu_gpu_open_channel_args(ctypes.Structure):
-    """OPEN_CHANNEL: create a channel, returns channel fd."""
+    """OPEN_CHANNEL: union of {in: runlist_id} and {out: channel_fd}, just one s32."""
     _fields_ = [
-        ("channel_fd", c_int32),
-        ("padding",    c_uint32),
-        ("runlist_id", c_int64),  # -1 = auto
+        ("channel_fd", c_int32),   # in: runlist_id (-1 = primary graphics), out: channel fd
     ]
 
 NVGPU_GPU_IOCTL_OPEN_CHANNEL = _IOWR('G', 11, ctypes.sizeof(nvgpu_gpu_open_channel_args))
@@ -634,13 +638,19 @@ def test_alloc_as(ctrl_fd):
     """Create a GPU address space."""
     print("\n=== ALLOC_AS (create address space) ===")
     args = nvgpu_alloc_as_args()
-    args.big_page_size = 0  # use default
-    args.flags = 0
-    args.va_range_start = 0
-    args.va_range_end = 0
+    # big_page_size=0 means no big pages (default for ga10b which reports 0)
+    # flags=UNIFIED_VA required for compute
+    # VA ranges must be PDE-aligned (2^21 = 2MB for ga10b)
+    # va_range_split must be 0 for UNIFIED_VA
+    PDE_SIZE = 1 << 21  # 2MB - determined empirically for ga10b
+    args.big_page_size = 0
+    args.flags = 2  # NVGPU_GPU_IOCTL_ALLOC_AS_FLAGS_UNIFIED_VA
+    args.va_range_start = PDE_SIZE        # 0x200000 (2MB)
+    args.va_range_end = (1 << 40) - PDE_SIZE  # 0xFFFFE00000 (almost 1TB)
     args.va_range_split = 0
     nv_ioctl(ctrl_fd, NVGPU_GPU_IOCTL_ALLOC_AS, args)
     print(f"  AS fd:            {args.as_fd}")
+    print(f"  VA range:         0x{args.va_range_start:012x} - 0x{args.va_range_end:012x}")
     return args.as_fd
 
 
@@ -677,7 +687,7 @@ def test_open_channel(ctrl_fd):
     """Create a channel."""
     print("\n=== OPEN_CHANNEL ===")
     args = nvgpu_gpu_open_channel_args()
-    args.runlist_id = -1  # auto
+    args.channel_fd = -1  # in: runlist_id = -1 (auto/primary graphics)
     nv_ioctl(ctrl_fd, NVGPU_GPU_IOCTL_OPEN_CHANNEL, args)
     print(f"  Channel fd:       {args.channel_fd}")
     return args.channel_fd
@@ -692,11 +702,13 @@ def test_full_channel_setup(ctrl_fd, as_fd, nvmap_fd, compute_class):
     # 1. Open TSG
     tsg_fd = test_open_tsg(ctrl_fd)
 
-    # 2. Create subcontext in TSG
+    # 2. Create subcontext in TSG (ASYNC for compute)
     print("\n=== CREATE_SUBCONTEXT ===")
     subctx = nvgpu_tsg_create_subcontext_args()
+    subctx.type = NVGPU_TSG_SUBCONTEXT_TYPE_ASYNC  # compute
+    subctx.as_fd = as_fd
     nv_ioctl(tsg_fd, NVGPU_TSG_IOCTL_CREATE_SUBCONTEXT, subctx)
-    print(f"  Subctx ID:        {subctx.subctx_id}")
+    print(f"  VEID:             {subctx.veid}")
 
     # 3. Open channel
     ch_fd = test_open_channel(ctrl_fd)
