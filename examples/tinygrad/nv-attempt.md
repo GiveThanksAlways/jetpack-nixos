@@ -1,17 +1,34 @@
-# NV Backend on Jetson Orin AGX 64GB — Investigation Report
+# NV Backend on Jetson Orin AGX 64GB — Investigation & Build Report
 
 **Date:** 2026-02-10  
 **Device:** NVIDIA Jetson Orin AGX 64GB Developer Kit  
-**JetPack:** 6 (L4T)  
+**JetPack:** 6 (L4T r36.4.4)  
 **Drivers loaded:** `nvidia.ko` 540.4.0 (Tegra variant) + `nvgpu.ko` (actual compute) + `nvmap.ko` (memory)  
 **Kernel:** 5.15.148  
 **CUDA:** 12.6  
-**GPU:** Orin iGPU, Ampere arch, SM 8.7, platform bus `17000000.gpu`  
-**tinygrad commit:** `cc9bf8ccbc0b7eb0e3b8510d475fa56263ef8cab`
+**GPU:** ga10b iGPU, Ampere arch 0x0170, SM 8.7, compute class 0xc7c0, platform bus `17000000.gpu`  
+**tinygrad:** v0.12.0  
+
+---
+
+## PROJECT STATUS
+
+| Phase | Status | Working Doc | Summary |
+|-------|--------|-------------|----------|
+| Phase 1: Reverse-Engineer nvgpu IOCTLs | **COMPLETE** | [phase1.md](phase1.md) | All 39 ioctls decoded. 7/7 tests pass. Compute class allocated. |
+| Phase 2: Memory Management via nvmap | NOT STARTED | [phase2.md](phase2.md) | CPU+GPU shared memory, mmap, read/write verification |
+| Phase 3: Command Submission | NOT STARTED | [phase3.md](phase3.md) | GPFIFO push, QMD, shader dispatch, syncpoint wait |
+| Phase 4: TegraIface Integration | NOT STARTED | [phase4.md](phase4.md) | tinygrad backend class, ops_nv.py integration |
+
+**Historical learning doc:** [Learning-Phase1.md](Learning-Phase1.md) — full walkthrough of Phase 1 methodology and discoveries.
+
+---
 
 ## TL;DR
 
-**NV backend cannot work on Jetson Orin AGX (JetPack 6)** without significant porting work. Both interfaces (NVK and PCI) fail for fundamental architectural reasons. The Orin uses **two separate kernel drivers** — `nvidia.ko` provides a partial RM API (display/modesetting), while `nvgpu.ko` + `nvmap.ko` handle actual GPU compute and memory. NVIDIA's `nvidia-uvm` module is **only available on JetPack 7 (Thor)**. CUDA backend is the correct path today.
+**NV backend cannot work on Jetson Orin AGX (JetPack 6)** without a new backend. Both existing interfaces (NVK and PCI) fail for fundamental architectural reasons. The Orin uses **two separate kernel drivers** — `nvidia.ko` provides a partial RM API (display/modesetting only), while `nvgpu.ko` + `nvmap.ko` handle actual GPU compute and memory. NVIDIA's `nvidia-uvm` module is **only available on JetPack 7 (Thor)**.
+
+**We are building Option A: a new `TegraIface` backend** that talks directly to nvgpu/nvmap. Phase 1 (ioctl reverse-engineering) is complete with all tests passing. The full channel + compute pipeline is proven to work from Python.
 
 ---
 
@@ -140,7 +157,7 @@ $ nvidia-smi
 
 ---
 
-## The Actual GPU Interface: nvgpu + nvhost + nvmap
+## The Actual GPU Interface: nvgpu + nvmap
 
 On JetPack 6 Orin, the actual GPU compute stack is:
 
@@ -148,30 +165,33 @@ On JetPack 6 Orin, the actual GPU compute stack is:
 $ lsmod | grep nvgpu
 nvgpu                2793472  0
 nvmap                 262144  1 nvgpu
+```
 
-$ ls /dev/nvhost-*gpu* /dev/nvmap
-/dev/nvhost-as-gpu              # Address Space management
-/dev/nvhost-ctrl-gpu            # GPU control channel
-/dev/nvhost-ctxsw-gpu           # Context switch
-/dev/nvhost-dbg-gpu             # Debug
-/dev/nvhost-gpu                 # GPU submission
-/dev/nvhost-nvsched-gpu         # Scheduling
-/dev/nvhost-nvsched_ctrl_fifo-gpu
-/dev/nvhost-power-gpu           # Power management
-/dev/nvhost-prof-ctx-gpu        # Profiling
-/dev/nvhost-prof-dev-gpu        
-/dev/nvhost-prof-gpu            
-/dev/nvhost-sched-gpu           # Scheduling
-/dev/nvhost-tsg-gpu             # TSG (Time Slice Group)
-/dev/nvmap                      # Memory allocator
+### Device Paths (CORRECTED — discovered during Phase 1)
+
+The device paths use `/dev/nvgpu/igpu0/` NOT the old `/dev/nvhost-*` paths:
+
+```bash
+# Primary devices used by CUDA (confirmed via strace):
+/dev/nvmap                      # Memory allocator (Magic 'N' = 0x4e)
+/dev/nvgpu/igpu0/ctrl           # GPU control (Magic 'G' = 0x47)
+
+# These return fd-based sub-devices via ioctls (NOT opened directly):
+# ALLOC_AS    -> returns AS fd     (Magic 'A' = 0x41)
+# OPEN_TSG    -> returns TSG fd    (Magic 'T' = 0x54)
+# OPEN_CHANNEL -> returns ch fd    (Magic 'H' = 0x48)
+
+# Additional devices (legacy nvhost paths also exist but not needed):
+/dev/dri/renderD128             # DRM (display, not needed for compute)
+/dev/host1x-fence               # Fence device (syncpoints)
 ```
 
 This is a **completely different ioctl interface** from the desktop nvidia.ko RM API. The nvgpu driver uses its own set of IOCTL codes for:
-- Channel management (`/dev/nvhost-gpu`)
-- Address space management (`/dev/nvhost-as-gpu`)
+- Channel management (channel fd from `OPEN_CHANNEL` on ctrl)
+- Address space management (AS fd from `ALLOC_AS` on ctrl)
 - Memory allocation (`/dev/nvmap`)
-- GPU control and queries (`/dev/nvhost-ctrl-gpu`)
-- TSG (Time Slice Group) scheduling (`/dev/nvhost-tsg-gpu`)
+- GPU control and queries (`/dev/nvgpu/igpu0/ctrl`)
+- TSG (Time Slice Group) scheduling (TSG fd from `OPEN_TSG` on ctrl)
 
 ---
 
@@ -199,94 +219,118 @@ JetPack 7 loads `nvidia-uvm` instead of `nvgpu` and has full desktop-style RM. I
 
 There are three possible approaches, ordered by feasibility:
 
-### Option A: nvgpu Backend (New Backend — Hard, Most Promising)
+### Option A: nvgpu Backend (New Backend) — **CHOSEN, IN PROGRESS**
 
-Write a new tinygrad backend that uses the nvgpu/nvhost/nvmap ioctls directly. This is the "correct" approach for Orin.
+Write a new tinygrad backend (`TegraIface`) that uses the nvgpu/nvmap ioctls directly.
 
-#### Phase 1: Reverse-Engineer nvgpu IOCTLs
+---
 
-**Iteration loop:**
+#### Phase 1: Reverse-Engineer nvgpu IOCTLs — **COMPLETE**
 
-1. **Map the ioctl interface**
-   - Study the nvgpu kernel source in [Jetson Linux Archive](https://developer.nvidia.com/embedded/jetson-linux-archive)
-   - Key files: `drivers/gpu/nvgpu/os/linux/ioctl*.c`
-   - Document every ioctl code, struct, and behavior for:
-     - `/dev/nvhost-ctrl-gpu` — GPU properties, capabilities, SM version
-     - `/dev/nvhost-gpu` — channel open, submit, etc.
-     - `/dev/nvhost-as-gpu` — address space map/unmap
-     - `/dev/nvhost-tsg-gpu` — TSG (compute queue) management
-     - `/dev/nvmap` — memory alloc/free/pin/mmap
+**Working doc:** [phase1.md](phase1.md)  
+**Test script:** [test_nvgpu.py](test_nvgpu.py) (940+ lines, all 7/7 tests pass)  
+**Learning doc:** [Learning-Phase1.md](Learning-Phase1.md)
 
-2. **Write Python ctypes bindings (autogen)**
-   - Similar to how tinygrad has `autogen/nv_570.py` for desktop RM
-   - Create `autogen/nvgpu.py` with struct definitions from nvgpu headers
-   - Tool: adapt tinygrad's existing header-to-ctypes generation
+**What was accomplished:**
+- Downloaded L4T r36.4.4 BSP sources, extracted all UAPI headers (nvgpu.h, nvgpu-ctrl.h, nvgpu-as.h, nvmap.h)
+- Straced CUDA running GPT-2 — captured 2783 lines, 1793 ioctls, decoded all 39 unique ioctl codes
+- **KEY DISCOVERY:** CUDA uses usermode submit (ZERO `SUBMIT_GPFIFO` ioctls) — writes GPFIFO entries to mapped memory and rings hardware doorbell
+- Built comprehensive Python ctypes test (`test_nvgpu.py`) proving direct GPU access works:
+  - GPU characteristics: arch=0x0170 (Ampere), SM 8.7, compute_class=0xc7c0
+  - Memory: nvmap CREATE+ALLOC (IOVMM heap) + GET_FD for dmabuf
+  - Address space: ALLOC_AS with PDE-aligned VA ranges (2MB alignment for ga10b)
+  - GPU mapping: MAP_BUFFER_EX assigns GPU VA
+  - Full channel pipeline: OPEN_TSG -> CREATE_SUBCONTEXT(ASYNC) -> OPEN_CHANNEL -> AS_BIND -> TSG_BIND_EX -> WDT(disable) -> SETUP_BIND(USERMODE+DETERMINISTIC) -> GET_USER_SYNCPOINT -> ALLOC_OBJ_CTX(0xc7c0)
+  - **Compute class 0xc7c0 successfully allocated!**
+  - Work submit token (doorbell): 511
+  - Syncpoint: ID=17, max=30000, GPU VA=0xffffe10000
 
-3. **Test basic operations** (fail loop)
-   ```python
-   # Pseudo-iteration:
-   fd = open("/dev/nvhost-ctrl-gpu", O_RDWR)
-   ioctl(fd, NVGPU_GPU_IOCTL_GET_CHARACTERISTICS, ...)  # → does it return SM version?
-   
-   fd_as = open("/dev/nvhost-as-gpu", O_RDWR) 
-   ioctl(fd_as, NVGPU_AS_IOCTL_BIND_CHANNEL, ...)  # → bind to GPU channel
-   
-   fd_map = open("/dev/nvmap", O_RDWR)
-   ioctl(fd_map, NVMAP_IOC_CREATE, ...)  # → allocate memory handle
-   ioctl(fd_map, NVMAP_IOC_ALLOC, ...)   # → back it with physical memory
-   
-   # Each call: check return value, decode error, adjust parameters, retry
-   ```
+**Critical discoveries (traps for the unwary):**
+1. SETUP_BIND requires `DETERMINISTIC` flag alongside `USERMODE_SUPPORT` — kernel enforces this
+2. ALLOC_AS VA ranges must be non-zero AND PDE-aligned (2^21 = 2MB for ga10b)
+3. Channel must bind to AS BEFORE binding to TSG (order matters!)
+4. OPEN_CHANNEL struct is 4 bytes (union), not 16
+5. Device paths are `/dev/nvgpu/igpu0/ctrl` not `/dev/nvhost-ctrl-gpu`
+6. Watchdog must be disabled before SETUP_BIND (required for DETERMINISTIC mode)
 
-#### Phase 2: Memory Management via nvmap
+**Kernel sources extracted:** `l4t-sources/nvgpu/` contains headers + `common/fifo/channel.c`, `common/mm/as.c`, `os/linux/ioctl_channel.c`, `os/linux/linux-channel.c`
 
-4. **Implement allocator**
-   - nvmap provides handle-based memory allocation
-   - Handles can be mapped into CPU VA and GPU VA
-   - Key ioctls: `NVMAP_IOC_CREATE` → `NVMAP_IOC_ALLOC` → `mmap()` → `NVGPU_AS_IOCTL_MAP_BUFFER`
-   - Orin has unified memory — CPU and GPU share the same DRAM
-   - This replaces the entire UVM subsystem
+---
 
-5. **Set up GPU virtual address space**
-   - Open `/dev/nvhost-as-gpu`, allocate VA ranges
-   - Map nvmap handles into GPU address space
-   - Test with known patterns: write from CPU, read GPU VA
+#### Phase 2: Memory Management via nvmap — NOT STARTED
 
-#### Phase 3: Command Submission
+**Working doc:** [phase2.md](phase2.md)
 
-6. **Create TSG + Channel**
-   - Open `/dev/nvhost-tsg-gpu`, create a TSG
-   - Open `/dev/nvhost-gpu`, create a GPU channel within the TSG
-   - Bind the channel to an address space
-   - Allocate a GPFIFO (command ring buffer) via nvmap
+**Goal:** Prove CPU<->GPU shared memory works. Write from CPU, read from GPU (and vice versa).
 
-7. **Submit compute work**
-   - Format QMD (Queue Meta Data) — Ampere format, same as desktop
-   - Write push buffer entries pointing to QMD
-   - Submit via `NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO`
-   - Key question: are the QMD fields identical to desktop Ampere?
+**Tasks:**
+1. **mmap nvmap buffers to CPU** — use `mmap()` on nvmap fd with handle, verify CPU read/write
+2. **Map to GPU VA** — use `MAP_BUFFER_EX` on AS fd, confirm GPU VA assignment
+3. **Verify coherence** — write pattern from CPU, submit a trivial DMA copy on GPU, read back
+4. **Build allocator class** — `TegraAllocator` with alloc/free/map/unmap methods
+5. **Handle cache coherence** — Orin has IO_COHERENCE flag set, but verify if explicit cache ops needed
 
-8. **Shader compilation**
-   - Use `libnvrtc.so` (already works via CUDA path) to compile PTX → SASS
-   - Parse the ELF output to extract the kernel binary
-   - This should be identical to desktop — SM 8.7 PTX assembly is SM 8.7
+**Key info from Phase 1:**
+- IOVMM heap (1<<30) works for allocation (SYSMEM heap does NOT)
+- nvmap CREATE -> ALLOC -> GET_FD -> MAP_BUFFER_EX is the proven flow
+- compr_kind=-1 (invalid), incompr_kind=0 (pitch linear) works for mapping
+- Orin has unified memory (VRAM=0), CPU and GPU share same DRAM
+- IO_COHERENCE flag is set in GPU characteristics
 
-#### Phase 4: Integration
+---
 
-9. **Build `TegraIface` class**
-   - Implement the same interface as `NVKIface` / `PCIIface`
-   - Required methods: `rm_alloc` equivalent, memory alloc, GPU mapping, GPFIFO submit
-   - Add detection: check for `/dev/nvhost-gpu` existence
+#### Phase 3: Command Submission — NOT STARTED
 
-10. **Test incrementally**
-    - Vector add → matrix multiply → conv2d → full model
-    - Compare outputs with CUDA backend for correctness
+**Working doc:** [phase3.md](phase3.md)
 
-11. **Upstream to tinygrad**
-    - Add to `_select_iface()` in `ops_nv.py`
-    - PR to tinygrad with Jetson CI testing
+**Goal:** Push actual GPU commands via GPFIFO and execute a compute shader.
 
-**Difficulty:** Very Hard. Estimated 4-8 weeks for an experienced systems programmer familiar with GPU driver internals. The nvgpu ioctl interface is well-structured but poorly documented outside NVIDIA.
+**Tasks:**
+1. **mmap userd region** — the userd buffer (4KB) is where we write GPFIFO doorbell
+2. **Understand GPFIFO entry format** — 8 bytes per entry: {GPU_VA of push buffer, length, flags}
+3. **Format QMD (Queue Meta Data)** — Ampere QMD format, contains shader address, grid dims, shared mem size
+4. **Compile a trivial shader** — use libnvrtc.so to compile PTX -> SASS for SM 8.7
+5. **Write push buffer** — inline methods or QMD launch pointing to shader
+6. **Ring doorbell** — write to userd to trigger GPFIFO processing
+7. **Wait for completion** — poll syncpoint or use syncpoint GPU VA
+8. **Verify result** — read output buffer from CPU, compare expected
+
+**Key info from Phase 1:**
+- CUDA uses usermode submit (no SUBMIT_GPFIFO ioctl!) — we do the same
+- work_submit_token=511 is the doorbell token
+- Syncpoint ID=17 at GPU VA 0xffffe10000 for completion tracking
+- GPFIFO buffer: 1024 entries x 8 bytes = 8192 bytes
+- Userd buffer: 4096 bytes
+- Compute class: 0xc7c0 (Ampere compute)
+- GPFIFO class: 0xc76f
+- DMA copy class: 0xc7b5
+- Key question: does QMD format match desktop Ampere? Check tinygrad's existing QMD code in ops_nv.py
+
+**Approach:** Study tinygrad's `NVKIface._cmdq_setup_compute_class()` and `_build_gpu_cmd()` — the QMD and push buffer format should be identical since ga10b is Ampere architecture. The only difference is HOW we submit (userd doorbell vs RM submit).
+
+---
+
+#### Phase 4: TegraIface Integration — NOT STARTED
+
+**Working doc:** [phase4.md](phase4.md)
+
+**Goal:** Build `TegraIface` class that plugs into tinygrad's NV runtime.
+
+**Tasks:**
+1. **Study `NVKIface` and `PCIIface`** — understand the interface contract
+2. **Implement `TegraIface`** — same interface, but using nvgpu/nvmap ioctls instead of RM
+3. **Memory management** — replace UVM with nvmap-based allocator
+4. **Channel management** — replace RM channel creation with nvgpu TSG+channel
+5. **Command submission** — replace RM GPFIFO submit with usermode submit
+6. **Add detection** — check for `/dev/nvgpu/igpu0/ctrl` in `_select_iface()`
+7. **Test incrementally** — vector add -> matmul -> conv2d -> GPT-2
+8. **Upstream to tinygrad** — PR with Jetson testing
+
+**Key info:** tinygrad's NV backend (ops_nv.py) already has Ampere QMD formatting, push buffer construction, and shader compilation via PTX. TegraIface only needs to replace the _driver layer_ (how memory is allocated and how commands are submitted), NOT the _GPU programming layer_ (QMD format, shader ISA, class methods).
+
+---
+
+**Revised difficulty estimate:** Medium-Hard. Phase 1 (the hardest reverse-engineering part) is done. Phases 2-3 are systematic engineering with the ioctl interface already mapped. Phase 4 is integration work with existing tinygrad code as reference.
 
 ---
 
@@ -309,10 +353,22 @@ Try to use the partial RM API (which does work for root alloc + card info) combi
 
 For **production use today**: stick with `CUDA=1`. It works, it's stable, NVIDIA supports it.
 
-For **research/hacking**: Option A (nvgpu backend) is the most promising. Start with Phase 1 step 1 — get the nvgpu kernel source and map the ioctl interface. The L4T kernel source tree has the complete nvgpu driver, and the structs/ioctls are defined in headers like:
-- `include/uapi/linux/nvgpu.h`
-- `include/uapi/linux/nvmap.h`
-- `drivers/gpu/nvgpu/include/nvgpu/linux/ioctl*.h`
+**For the nvgpu backend (Option A — in progress):** Phase 1 is complete. Continue with Phase 2 (memory management). Each phase has its own markdown file for iteration notes. The `test_nvgpu.py` script is the foundation — extend it for each new phase before integrating into tinygrad.
+
+### Key Files in This Directory
+
+| File | Purpose |
+|------|----------|
+| `nv-attempt.md` | This file — high-level project status and roadmap |
+| `phase1.md` | Phase 1 working doc (COMPLETE) — ioctl decode, struct tables, test results |
+| `phase2.md` | Phase 2 working doc — memory management |
+| `phase3.md` | Phase 3 working doc — command submission |
+| `phase4.md` | Phase 4 working doc — TegraIface integration |
+| `Learning-Phase1.md` | Teaching doc — how Phase 1 was solved, methodology, concepts |
+| `test_nvgpu.py` | Python ctypes test — 7/7 passing, full channel+compute pipeline |
+| `strace-cuda.sh` | Helper to run CUDA under strace from detective nix shell |
+| `l4t-sources/` | Extracted L4T BSP kernel sources (headers + key .c files) |
+| `flake.nix` | Nix flake with `default` (tinygrad+CUDA) and `detective` (strace/gcc/gdb) shells |
 
 ### Key Resources
 
