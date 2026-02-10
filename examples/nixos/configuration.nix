@@ -27,7 +27,11 @@
   hardware.nvidia-jetpack.enable = true;
   hardware.nvidia-jetpack.som = "orin-agx";
   hardware.nvidia-jetpack.carrierBoard = "devkit";
+  hardware.nvidia-jetpack.configureCuda = true;
   hardware.graphics.enable = true;
+
+  # vscode-server
+  programs.nix-ld.enable = true;
 
   # User account
   users.users.spencer = {
@@ -37,6 +41,7 @@
     openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIvr/COHf/R7Ej1HB9pYdAT2p4M8r7uM3vFetWtT5Sed spencer.willett@tp-link.com"
     ];
   };
 
@@ -48,6 +53,7 @@
     openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIvr/COHf/R7Ej1HB9pYdAT2p4M8r7uM3vFetWtT5Sed spencer.willett@tp-link.com"
     ];
   };
 
@@ -134,10 +140,10 @@
 
   # List packages installed in system profile.
   # You can use https://search.nixos.org/ to find more packages (and options).
-  # environment.systemPackages = with pkgs; [
-  #   vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #   wget
-  # ];
+  environment.systemPackages = with pkgs; [
+    vim
+    git
+  ];
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
