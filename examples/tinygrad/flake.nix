@@ -116,6 +116,7 @@
           #
           # CUDA backend libs (required):
           CUDA_PATH = "${jetpack.l4t-cuda}/lib/libcuda.so.1";
+          CUDA_INCLUDE_PATH = "${cuda.cuda_nvrtc.dev}/include";
           NVRTC_PATH = "${pkgs.lib.getLib cuda.cuda_nvrtc}/lib/libnvrtc.so";
           NVJITLINK_PATH = "${pkgs.lib.getLib cuda.libnvjitlink}/lib/libnvJitLink.so";
           # System libs (tinygrad loads libc via ctypes for io_uring/mmap/etc.):
