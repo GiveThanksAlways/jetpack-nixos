@@ -8,8 +8,8 @@
 
 | Engine | Decode tok/s | Prefill (pp512) tok/s | Notes |
 |--------|-------------|----------------------|-------|
-| llama.cpp (no FA) | 25.63 | 1091 | Hand-tuned CUDA kernels |
-| llama.cpp (FA=1) | 27.79 | 1391 | + flash attention |
+| llama.cpp (no FA) | 25.61 | 1090 | Hand-tuned CUDA kernels |
+| llama.cpp (FA=1) | 27.82 | 1392 | + flash attention |
 | tinygrad CUDA=1 | 3.28 | N/A | Dequant to fp16, memory-bound |
 | tinygrad NV=1 | CRASH | CRASH | MISALIGNED_ADDR in dequant kernel |
 
@@ -19,18 +19,18 @@
 
 ## Table of Contents
 
-1. [Why tinygrad is 8× slower](#1-why-tinygrad-is-8×-slower)
+1. [Why tinygrad is 8× slower](#1-why-tinygrad-is-8-slower)
 2. [The 6-phase plan](#2-the-6-phase-plan)
 3. [Phase 0: Unblock NV=1 (Fix the crash)](#phase-0-unblock-nv1)
 4. [Phase 1: Measure properly (baselines)](#phase-1-measure-properly)
 5. [Phase 2: Keep weights quantized (the 2.6× win)](#phase-2-keep-weights-quantized)
 6. [Phase 3: BEAM search tuning (the 1.3-1.5× win)](#phase-3-beam-search-tuning)
-7. [Phase 4: Softmax & attention fusion (the 1.1-1.2× win)](#phase-4-softmax--attention-fusion)
+7. [Phase 4: Softmax and attention fusion (the 1.1-1.2× win)](#phase-4-softmax-and-attention-fusion)
 8. [Phase 5: Memory system (the 1.1× win)](#phase-5-memory-system)
 9. [Phase 6: Stretch goals](#phase-6-stretch-goals)
 10. [Code locations quick reference](#code-locations)
 11. [Test commands](#test-commands)
-12. [Appendix: What llama.cpp does that we don't (yet)](#appendix-what-llamacpp-does-that-we-dont-yet)
+12. [Appendix: What llama.cpp does that we don't (yet)](#appendix)
 
 ---
 
@@ -44,8 +44,8 @@ At batch=1, LLM decode is **memory-bandwidth-bound**. Each token requires readin
 tok/s = memory_bandwidth (GB/s) / bytes_read_per_token (GB)
 ```
 
-**llama.cpp reads 0.967 GB/token** (quantized Q6_K weights, ~6.5 bits/param, 1.24B params).  
-**tinygrad reads ~2.5 GB/token** (dequantized to fp16: 2 bytes/param, 1.24B params + overhead from dequant ops).
+**llama.cpp reads 0.967 GB/token** (quantized Q6_K weights, ~6.5 bits/param, 1B params).  
+**tinygrad reads ~2.5 GB/token** (dequantized to fp16: 2 bytes/param, 1B params + overhead from dequant ops).
 
 At Orin's ~102 GB/s effective memory bandwidth:
 - llama.cpp theoretical max: 102 / 0.967 ≈ 105 tok/s → achieves 26 tok/s (~25% efficiency, normal for small models)
@@ -57,7 +57,7 @@ At Orin's ~102 GB/s effective memory bandwidth:
 
 2. **Suboptimal kernel tuning (1.3-1.5×):** tinygrad's hand-coded heuristics pick reasonable but not optimal tile sizes, local memory usage, and unroll factors. The BEAM search can do better but isn't used by default.
 
-3. **Extra kernel launches & missing fusions (1.1-1.2×):** Softmax is 3 kernels instead of 1. Multiple small ops (RMSNorm, RoPE, residual adds) that could be fused aren't. Each kernel launch has overhead.
+3. **Extra kernel launches and missing fusions (1.1-1.2×):** Softmax is 3 kernels instead of 1. Multiple small ops (RMSNorm, RoPE, residual adds) that could be fused aren't. Each kernel launch has overhead.
 
 Close all three and we reach: 3.3 × 2.6 × 1.4 × 1.15 ≈ 13.8 tok/s minimum, with potential to go higher if bandwidth efficiency improves (it should — fewer kernels = less launch overhead, better cache utilization).
 
@@ -71,7 +71,7 @@ Close all three and we reach: 3.3 × 2.6 × 1.4 × 1.15 ≈ 13.8 tok/s minimum, 
 | 1 | Establish proper baselines | Measurement only | Easy | Phase 0 |
 | 2 | Keep weights quantized in compute | 2-3× | Hard | Phase 1 |
 | 3 | BEAM search kernel tuning | 1.3-1.5× | Medium | Phase 1 |
-| 4 | Softmax & attention fusion | 1.1-1.2× | Medium-Hard | Phase 1 |
+| 4 | Softmax and attention fusion | 1.1-1.2× | Medium-Hard | Phase 1 |
 | 5 | Memory system optimizations | 1.05-1.1× | Easy | Phase 0 |
 | 6 | Stretch goals (batch>1, speculative) | Varies | Hard | All above |
 
@@ -87,7 +87,7 @@ Running any GGUF quantized model with `NV=1` crashes with `MISALIGNED_ADDR` GPU 
 
 ### Root cause (verified)
 
-The PTX renderer emits vectorized loads like `ld.global.v4.u32` for data originating from GGUF blocks. Q6_K blocks are 210 bytes each — not a power of 2. When the scheduler reshapes the raw bytes into `(-1, 210)` and slices at non-aligned offsets (e.g., `blocks[:,128:192]`), the resulting load addresses aren't aligned to the vector width (16 bytes for v4.u32).
+The PTX renderer (before our fix) emitted vectorized loads like `ld.global.v4.u32` for data originating from GGUF blocks. Q6_K blocks are 210 bytes each — not a power of 2. When the scheduler reshapes the raw bytes into `(-1, 210)` and slices at non-aligned offsets (e.g., `blocks[:,128:192]`), the resulting load addresses aren't aligned to the vector width (16 bytes for v4.u32).
 
 On desktop CUDA, the driver installs a trap handler that decomposes misaligned vector loads into scalar loads transparently. On Tegra (nvgpu kernel driver), **there is no trap handler** — the GPU's SM raises a machine check exception and the kernel is killed.
 
@@ -96,9 +96,9 @@ On desktop CUDA, the driver installs a trap handler that decomposes misaligned v
 We already patched `ptx.py` to decompose vector global loads/stores into scalar `ld.volatile` / `st.volatile` ops on the NV device. The `.volatile` modifier prevents ptxas/nvJitLink from merging them back into vector SASS instructions.
 
 **Key functions added:**
-- `_nv_decompose_load()` — at `renderer/ptx.py` around line 99
-- `_nv_decompose_store()` — at `renderer/ptx.py` around line 109
-- Integration into `string_rewrite` patterns — at `renderer/ptx.py` around line 115
+- `_nv_decompose_load()` — at `tinygrad/renderer/ptx.py` line 94
+- `_nv_decompose_store()` — at `tinygrad/renderer/ptx.py` line 109
+- Integration into `string_rewrite` patterns — at `tinygrad/renderer/ptx.py` lines 115-145
 
 ### Validation needed
 
@@ -125,11 +125,10 @@ Before optimizing, we need clean baseline numbers for both `NV=1` and `CUDA=1` o
 
 ### Benchmarks to run
 
-All commands from: `cd /home/agent/jetpack-nixos/examples/tinygrad && nix develop -c bash -c '...'`
-
 ```bash
+# All from: cd /home/agent/jetpack-nixos/examples/tinygrad && nix develop -c bash -c '...'
 # Pre-download the model once:
-cd tinygrad && python3 -c "from tinygrad import Tensor; Tensor.from_url('https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf')"
+#   cd tinygrad && python3 -c "from tinygrad import Tensor; Tensor.from_url('https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf')"
 
 # 1. tinygrad CUDA=1 baseline (should already work, ~3.3 tok/s)
 CUDA=1 HALF=1 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
@@ -141,9 +140,9 @@ NV=1 HALF=1 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
 NV=1 HALF=1 BEAM=2 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 5
 
 # 4. tinygrad with JITBEAM=2 (beam search only in JIT, faster startup)
-NV=1 HALF=1 JITBEAM=2 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
+NV=1 HALF=1 JITBEAM=2 IGNORE_BEAM_CACHE=1 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
 
-# 5. llama.cpp comparison (already done: 25.63 / 27.79 tok/s)
+# 5. llama.cpp comparison (already done: 25.61 / 27.82 tok/s)
 # See tests/results_llama3_llamacpp.log and tests/results_llama3_llamacpp_fa.log
 
 # 6. Profile kernel-level breakdown
@@ -154,14 +153,14 @@ NV=1 HALF=1 DEBUG=2 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark
 
 For each run, capture:
 - **Decode tok/s** (steady state, after warmup)
-- **Memory bandwidth** (GB/s from GlobalCounters output)
+- **Memory bandwidth** (GB/s from GlobalCounters)
 - **Param bandwidth** (GB/s — how fast we're reading the model weights)
 - **Number of kernels per token** (from DEBUG=2 output)
 - **Time spent in dequant vs matmul vs attention** (from DEBUG=2 kernel timings)
 
 ### Kernel profiling
 
-The `DEBUG=2` output shows each kernel's execution time. For a single decode token, we want to see:
+The DEBUG=2 output shows each kernel's execution time. For a single decode token, we want to see:
 - How many kernels fire
 - Which ones are slow (likely: dequantize, matmul for each of 16 transformer blocks)
 - Total kernel time vs Python overhead
@@ -183,28 +182,28 @@ This is where the 2-3× speedup lives. It's also the hardest phase because it to
 
 ```
 GGUF file on disk (967 MB quantized)
-    ↓ ggml_data_to_tensor()        [lazy: produces computation graph]
-    ↓ .cast('float16')             [lazy: adds CAST node]
-    ↓ .contiguous()                [forces materialization into a flat fp16 buffer]
-    ↓ .realize()                   [executes: writes 2.5 GB of fp16 weights to memory]
-    ↓
-    → matmul reads 2.5 GB of fp16 per token
+    | ggml_data_to_tensor()        [lazy: produces computation graph]
+    | .cast('float16')             [lazy: adds CAST node]
+    | .contiguous()                [forces materialization into a flat fp16 buffer]
+    | .realize()                   [executes: writes 2.5 GB of fp16 weights to memory]
+    v
+    -> matmul reads 2.5 GB of fp16 per token
 ```
 
 ### Ideal flow (what llama.cpp does)
 
 ```
 GGUF file on disk (967 MB quantized)
-    ↓ keep in memory as raw quantized bytes (967 MB)
-    ↓
-    → matmul kernel reads 967 MB quantized + dequantizes in registers → accumulate
+    | keep in memory as raw quantized bytes (967 MB)
+    v
+    -> matmul kernel reads 967 MB quantized + dequantizes in registers -> accumulate
 ```
 
 ### The tinygrad way to achieve this
 
-**The scheduler already has the machinery.** The key insight is that `ggml_data_to_tensor()` returns a **lazy** Tensor — the dequant ops are nodes in the computation graph, not executed yet. If we don't call `.contiguous().realize()`, the dequant stays fused with whatever reads the weights next (i.e., the matmul in `nn.Linear.__call__`).
+**The scheduler already has the machinery.** The key insight is that `ggml_data_to_tensor` returns a **lazy** Tensor — the dequant ops are nodes in the computation graph, not executed yet. If we don't call `.contiguous().realize()`, the dequant stays fused with whatever reads the weights next (i.e., the matmul in `nn.Linear.__call__`).
 
-But the current code at `apps/llm.py` line 214 forces materialization:
+But the current code at `tinygrad/apps/llm.py` line 213-214 forces materialization:
 
 ```python
 # NOTE: without this contiguous, it unpacks the weights from the model every time.
@@ -212,7 +211,7 @@ But the current code at `apps/llm.py` line 214 forces materialization:
 for s in (params:=nn.state.get_parameters(model)): s.replace(s.contiguous())
 ```
 
-The comment says **"we shouldn't need this"** — the tinygrad devs know this is wrong. The issue is that without `.contiguous()`, each forward pass re-executes the dequant computation graph from the raw GGUF tensor. This is slower because:
+The comment says "we shouldn't need this" — the tinygrad devs know this is wrong. The issue is that without `.contiguous()`, each forward pass re-executes the dequant computation graph from the raw GGUF tensor. This is slower because:
 
 1. **The dequant graph is complex** — Q6_K has bit manipulation, shifts, masks, casts — and the scheduler may not fuse it efficiently with the matmul
 2. **The raw GGUF tensor lives on disk** — every token would re-read from disk
@@ -230,7 +229,7 @@ The GGUF tensor starts on the default device but the raw bytes backing the quant
 ```python
 # Proposed change in llm.py from_gguf():
 nn.state.load_state_dict(model, state_dict, verbose=False, consume=True, realize=False)
-# DON'T do .contiguous() — let dequant stay lazy!
+# DON'T do .contiguous() -- let dequant stay lazy!
 # DO realize the underlying raw quantized buffers so they're in GPU memory:
 if realize: Tensor.realize(*params)
 ```
@@ -240,7 +239,7 @@ But this alone won't work — the scheduler needs to actually fuse the dequant i
 #### Task 2b: Make the scheduler fuse dequant + matmul
 
 This is the core challenge. When the matmul `A @ B` runs where B is a lazy dequant graph, the scheduler currently creates two kernels:
-1. Kernel 1: dequant → write fp16 output buffer
+1. Kernel 1: dequant -> write fp16 output buffer
 2. Kernel 2: matmul reading fp16 buffer
 
 We need it to create one kernel:
@@ -248,28 +247,16 @@ We need it to create one kernel:
 
 **How the scheduler decides to materialize (create kernel boundaries):**
 
-The scheduling logic is in `schedule/indexing.py`. The `run_rangeify()` function walks the computation graph and decides where to place kernel boundaries. It materializes (creates a new buffer) when:
+The scheduling logic is in `tinygrad/schedule/indexing.py`. The `run_rangeify()` function (line 200+) walks the computation graph and decides where to place kernel boundaries. It materializes (creates a new buffer) when:
 
 - A node is used by multiple consumers (data reuse)
-- A `REDUCE_AXIS` ends and new ranges begin
-- `PCONTIG` heuristics decide fusion is too aggressive (buffer limit, mismatched ranges)
+- A REDUCE_AXIS ends and new ranges begin
+- PCONTIG heuristics decide fusion is too aggressive (buffer limit, mismatched ranges)
 
 For dequant + matmul fusion:
 - The dequant output is used by exactly ONE consumer (the matmul)
 - The ranges should be compatible (both iterate over the weight dimensions)
 - But the dequant has complex indexing (slicing at non-uniform offsets within 210-byte blocks) that may confuse the scheduler
-
-**Key code in `schedule/indexing.py` around line 217:**
-```python
-all_all_same = all(all_same(local_rngs) for local_rngs,_ in rngs_valids)
-# ...
-if all_all_same or (PCONTIG and all_same(local_rngs)):
-```
-
-And at line 234:
-```python
-if not (PCONTIG > 1) or any(any(rr.arg > e.arg for e in ending_ranges[x]) for rr in r.ranges):
-```
 
 **Concrete investigation steps:**
 
@@ -277,7 +264,7 @@ if not (PCONTIG > 1) or any(any(rr.arg > e.arg for e in ending_ranges[x]) for rr
 # 1. See the current schedule (what kernels are generated)
 NV=1 HALF=1 DEBUG=3 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 1 2>&1 | head -500
 
-# 2. Check if removing .contiguous() changes the schedule  
+# 2. Check if removing .contiguous() changes the schedule
 # (Temporarily edit llm.py to comment out line 214)
 NV=1 HALF=1 DEBUG=3 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 1 2>&1 | head -500
 
@@ -291,6 +278,16 @@ NV=1 HALF=1 PCONTIG=2 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchma
 **If the scheduler does NOT fuse dequant+matmul (most likely):**
 
 The fix is to modify the scheduling heuristics so that element-wise ops feeding into a single REDUCE_AXIS consumer with compatible ranges are not materialized. This is exactly what `PCONTIG` is designed to do, but it's marked as broken on PTX.
+
+The relevant code is at `tinygrad/schedule/indexing.py` line 217:
+```python
+if all_all_same or (PCONTIG and all_same(local_rngs)):
+```
+
+And at `tinygrad/schedule/indexing.py` line 234:
+```python
+if not (PCONTIG > 1) or any(any(rr.arg > e.arg for e in ending_ranges[x]) for rr in r.ranges):
+```
 
 **The key question for the scheduler is:** can we inline the Q6_K dequant logic (bit shifts, masks, casts on 210-byte blocks) into a matmul kernel without blowing up register usage or making the kernel too large?
 
@@ -307,7 +304,7 @@ class QuantizedLinear:
     self.n_elements = n_elements
     self.ggml_type = ggml_type
     self.shape = (out_features, n_elements // out_features)
-    
+
   def __call__(self, x: Tensor) -> Tensor:
     # dequant is part of the computation graph, will be fused with matmul by scheduler
     w = ggml_data_to_tensor(self.raw, self.n_elements, self.ggml_type).reshape(self.shape)
@@ -328,13 +325,13 @@ Reading 0.967 GB instead of 2.5 GB → theoretical 2.6×. Minus some overhead fo
 
 ### Problem
 
-tinygrad's `hand_coded_optimizations()` in `codegen/opt/heuristic.py` uses fixed heuristics to set tile sizes, local memory, and upcast factors. These work reasonably but aren't optimal for Orin's specific hardware (SM 8.7, 128KB L1, 2048 KB shared mem, 204 GB/s LPDDR5).
+tinygrad's `hand_coded_optimizations` in `tinygrad/codegen/opt/heuristic.py` uses fixed heuristics to set tile sizes, local memory, and upcast factors. These work reasonably but aren't optimal for Orin's specific hardware (SM 8.7, 128KB L1, 2048 KB shared mem, 204 GB/s LPDDR5).
 
 ### Solution: BEAM search
 
 BEAM search (`BEAM=N` env var) systematically explores the optimization space and benchmarks each variant. It's tinygrad's equivalent of autotuning.
 
-From tinygrad's own CI (`.github/workflows/benchmark.yml`), the team uses:
+From the CI benchmark config (`.github/workflows/benchmark.yml`), tinygrad's own team uses:
 ```bash
 NV=1 HALF=1 JITBEAM=2 IGNORE_BEAM_CACHE=1 python3 examples/gpt2.py ...
 ```
@@ -346,8 +343,10 @@ NV=1 HALF=1 JITBEAM=2 IGNORE_BEAM_CACHE=1 python3 examples/gpt2.py ...
 3. The BEAM search tries different combinations of `OptOps.TC` (tensor cores), `OptOps.UPCAST`, `OptOps.LOCAL`, `OptOps.UNROLL`, `OptOps.GROUPTOP`, etc.
 4. Results are cached to disk (`CACHELEVEL=2` by default) so subsequent runs don't re-search.
 
-From `engine/jit.py`:
+### How JITBEAM works (from engine/jit.py):
+
 ```python
+# During JIT capture (2nd call), BEAM is set to JITBEAM value:
 with Context(BEAM=getenv("JITBEAM", BEAM.value), NO_MEMORY_PLANNER=int(self.prune)):
     capturing.append(self)
 ```
@@ -370,7 +369,7 @@ NV=1 HALF=1 JITBEAM=2 BEAM_PADTO=1 python3 -m tinygrad.apps.llm --model llama3.2
 
 ### Tuning the matvec heuristic
 
-For batch=1 decode, every linear layer is a matrix-vector multiply (matvec). The matvec heuristic in `codegen/opt/heuristic.py` (around line 65) uses env vars:
+For batch=1 decode, every linear layer is a matrix-vector multiply (matvec). The matvec heuristic in `tinygrad/codegen/opt/heuristic.py` (lines 65-80) uses env vars:
 
 ```bash
 # Default matvec params
@@ -379,7 +378,8 @@ MV_THREADS_PER_ROW=8
 MV_ROWS_PER_THREAD=4
 
 # Try different configs
-NV=1 HALF=1 MV_BLOCKSIZE=8 MV_THREADS_PER_ROW=16 MV_ROWS_PER_THREAD=8 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
+NV=1 HALF=1 MV_BLOCKSIZE=8 MV_THREADS_PER_ROW=16 MV_ROWS_PER_THREAD=8 \
+  python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 20
 ```
 
 ### Expected speedup: 1.3-1.5×
@@ -390,34 +390,34 @@ Based on tinygrad CI results where BEAM improves GPT-2 by 20-50% over hand-coded
 
 ---
 
-## Phase 4: Softmax & Attention Fusion
+## Phase 4: Softmax and Attention Fusion
 
 ### Current state
 
-**Softmax is 3 kernels:** The test at `test/null/test_schedule.py:940` confirms: `check_schedule(t, 3) # TODO: 1?` — the tinygrad devs know this should be 1 kernel but isn't yet.
+**Softmax is 3 kernels:** The test at `test/null/test_schedule.py:938` confirms: `check_schedule(t, 3) # TODO: 1?` — the tinygrad devs know this should be 1 kernel but isn't yet.
 
 The 3 kernels are:
 1. Compute max (reduce)
-2. Compute exp(x - max) and sum (reduce)  
+2. Compute exp(x - max) and sum (reduce)
 3. Divide by sum (element-wise)
 
 Each kernel reads/writes the full attention matrix, adding memory traffic and launch overhead.
 
 **Flash attention exists but isn't available on NV:**
-- `FLASH_ATTENTION=1` env var gates `extra/thunder/tiny/fa.py` in `tensor.py` line 3592
+- `FLASH_ATTENTION=1` env var gates `extra/thunder/tiny/fa.py` in `tinygrad/tensor.py` line 3592
 - The Thunder TK flash attention kernel is 340 lines, uses bfloat16, WMMA ops
-- Tests are AMD-only: `@skipIf(Device.DEFAULT not in ["AMD"])` in `test_tk.py`
+- Tests are AMD-only: `@skipIf(Device.DEFAULT not in ["AMD"])` in test_tk.py
 - It uses bfloat16 throughout — Orin SM 8.7 supports bf16 tensor cores but fp16 is more commonly used
 
 **PCONTIG/RANGEIFY fusion (the compiler-driven approach) exists but is broken on PTX:**
 - `test_rangeify.py:9`: `@skipIf(PTXRenderer, "broken in LVP and PTX")`
-- `test_softmax_fusion.py`: 8 tests have `@skip("needs RANGEIFY>1")`
+- `test_softmax_fusion.py`: Multiple `@skip("needs RANGEIFY>1")`
 
 ### Strategy
 
 #### 4a: Try FLASH_ATTENTION=1 (quick test)
 
-Even though it's AMD-targeted, the Thunder TK kernel framework supports NVIDIA conceptually (`WARP_THREADS = 32` for non-AMD in `tk/__init__.py`). Try it:
+Even though it's AMD-targeted, the Thunder TK kernel framework supports NVIDIA conceptually (`WARP_THREADS = 32` for non-AMD in `extra/thunder/tiny/tk/__init__.py`). Try it and see what happens:
 
 ```bash
 NV=1 HALF=1 FLASH_ATTENTION=1 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 5
@@ -427,20 +427,21 @@ If it crashes (likely due to bf16 on a model using fp16), this confirms we need 
 
 #### 4b: Fix softmax fusion in the scheduler (the right way)
 
-The softmax fusion is a scheduler problem in `schedule/indexing.py`. The `RANGEIFY` system needs to recognize that max-reduce → exp-subtract → sum-reduce → divide can all share the same ranges over the softmax dimension.
+The softmax fusion is a scheduler problem in `tinygrad/schedule/indexing.py`. The RANGEIFY system needs to recognize that max-reduce → exp-subtract → sum-reduce → divide can all share the same ranges over the softmax dimension.
 
 This is tracked by the tinygrad team (the `TODO: 1?` comment). If upstream fixes it, we get it for free. If not, we can investigate:
 
 ```bash
 # See what RANGEIFY produces
-NV=1 HALF=1 RANGEIFY=2 DEBUG_RANGEIFY=1 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark 1 2>&1 | head -500
+NV=1 HALF=1 RANGEIFY=2 DEBUG_RANGEIFY=1 python3 -m tinygrad.apps.llm \
+  --model llama3.2:1b --benchmark 1 2>&1 | head -500
 ```
 
 #### 4c: RMSNorm and residual fusion
 
 Each transformer block has:
 ```
-x → RMSNorm → attention → residual add → RMSNorm → FFN → residual add
+x -> RMSNorm -> attention -> residual add -> RMSNorm -> FFN -> residual add
 ```
 
 The RMSNorm and residual add are element-wise and should be fused with their consumers. Check if they are:
@@ -450,7 +451,7 @@ NV=1 HALF=1 DEBUG=2 python3 -m tinygrad.apps.llm --model llama3.2:1b --benchmark
 ```
 
 Count the number of kernels per token. For LLaMA 3.2 1B with 16 blocks, the minimum is roughly:
-- 16 × (attention QKV matmul + KV cache update + attention score + softmax + attention output + FFN gate + FFN up + FFN down) ≈ 128 kernels
+- 16 × (QKV_matmul + KV_cache + attn_score + softmax + attn_out + FFN_gate + FFN_up + FFN_down) ≈ 128 kernels
 - Ideal with fusion: ~64-80 kernels
 - If it's much more than 128, things aren't fusing properly
 
@@ -466,25 +467,26 @@ Softmax fusion alone saves 2/3 of attention memory traffic for that stage. But a
 
 ### 5a: Huge pages for TegraIface
 
-The `NVKIface` (desktop) path at `runtime/ops_nv.py` around line 494 uses 2MB huge pages for allocations ≥8MB:
+The NVKIface (desktop) path at `tinygrad/runtime/ops_nv.py` line 494 uses 2MB huge pages for allocations >=8MB:
 ```python
 page_size = (2 << 20) if size >= (8 << 20) else (4 << 10)
 ```
 
-The `TegraIface` at `runtime/ops_nv.py` around line 1166 always uses `mmap.PAGESIZE` (4KB) for the GPU page table:
+The TegraIface at `tinygrad/runtime/ops_nv.py` line 1166 always uses `mmap.PAGESIZE` (4KB) for the GPU page table:
 ```python
-page_size = mmap.PAGESIZE  # GPU MMU page size — always 4KB on Tegra ga10b
+page_size = mmap.PAGESIZE  # GPU MMU page size -- always 4KB on Tegra ga10b
 ```
 
-However, `alloc_align` does handle 2MB alignment already for large allocations. The issue is the GPU's SMMU TLB — with 4KB pages, large buffers create many TLB entries, increasing TLB miss rate. On Tegra, the nvgpu GPU page table doesn't support big pages (`big_page_size=0`), but the SMMU (ARM System MMU) that sits between the GPU and DRAM does support 2MB huge pages if the physical memory is 2MB-aligned.
+However, `alloc_align` does handle 2MB alignment already. The issue is the GPU's SMMU TLB — with 4KB pages, large buffers create many TLB entries, increasing TLB miss rate. On Tegra, the nvgpu GPU page table doesn't support big pages (ga10b has `big_page_size=0`), but the SMMU (ARM System MMU) that sits between the GPU and DRAM does support 2MB huge pages if the physical memory is 2MB-aligned.
 
 **What to try:**
 ```python
 # In TegraIface.alloc():
 # Use mmap.MAP_HUGETLB for large allocations to request 2MB SMMU pages
+import ctypes
 MAP_HUGETLB = 0x40000  # Linux: force huge pages
 if size >= (8 << 20) and not uncached and not host:
-    addr = libc_so.mmap(ct.c_void_p(gpu_va), size, 
+    addr = libc_so.mmap(ct.c_void_p(gpu_va), size,
                         mmap.PROT_READ | mmap.PROT_WRITE,
                         mmap.MAP_SHARED | MAP_FIXED | MAP_HUGETLB,
                         dmabuf_fd, 0)
@@ -543,7 +545,7 @@ This is small for LLaMA 1B but becomes significant at larger context lengths or 
 
 ### 6d: Continuous batching for server mode
 
-The `apps/llm.py` server mode (`--serve`) currently handles one request at a time. Continuous batching would allow multiple requests to share GPU compute.
+The `llm.py` server mode (`--serve`) currently handles one request at a time. Continuous batching would allow multiple requests to share GPU compute.
 
 ---
 
@@ -563,16 +565,15 @@ The `apps/llm.py` server mode (`--serve`) currently handles one request at a tim
 | `codegen/opt/search.py` | BEAM search implementation | Phase 3 |
 | `codegen/opt/tc.py` | Tensor core definitions (cuda_sm80) | Phase 3 |
 | `codegen/__init__.py` | `get_program`, `apply_opts` — compilation pipeline | Phase 3, 4 |
-| `codegen/opt/postrange.py` | `apply_opts` — routes BEAM vs hand_coded | Phase 3 |
+| `codegen/opt/postrange.py` | `apply_opts` — chooses BEAM vs hand_coded | Phase 3 |
 | `tensor.py` | `scaled_dot_product_attention`, FLASH_ATTENTION gate | Phase 4 |
 | `engine/jit.py` | TinyJit, JITBEAM mechanism | Phase 3 |
 
-### GGUF Dequant Code (nn/state.py)
-
-The Q6_K dequant at `nn/state.py` around line 340:
+### GGUF Q6_K dequant path (nn/state.py, line 339)
 
 ```python
-if ggml_type == 14:  # Q6_K: 256 elements per 210-byte block
+# Q6_K: 256 elements per 210-byte block
+if ggml_type == 14:
     xl, xh = q_to_uint8(blocks[:,:128].reshape((-1, 2, 64)), 4), \
              q_to_uint8(blocks[:,128:192].reshape((-1, 2, 32)), 2).lshift(4)
     scales = blocks[:,192:208].bitcast(dtypes.int8).unsqueeze(-1).expand((-1, 16, 16)).reshape((-1, 256))
@@ -580,7 +581,7 @@ if ggml_type == 14:  # Q6_K: 256 elements per 210-byte block
     return d * (xl.bitwise_or(xh).bitcast(dtypes.int8) - 32).flatten(-2) * scales
 ```
 
-This is the computation graph that needs to be fused into the matmul kernel. It reads 210-byte blocks and produces 256 fp32 values. The slicing at `:128`, `128:192`, `192:208`, `-2:` creates non-uniform access patterns.
+Note the slices at offsets 0, 128, 192, 208 within 210-byte blocks — these cause the misalignment.
 
 ### Key environment variables
 
@@ -608,7 +609,7 @@ This is the computation graph that needs to be fused into the matmul kernel. It 
 
 ## Test Commands
 
-All commands assume you're in `examples/tinygrad` and use `nix develop -c bash -c '...'` to enter the environment.
+All commands assume you're in `/home/agent/jetpack-nixos/examples/tinygrad` and use `nix develop -c bash -c '...'` to enter the environment.
 
 ### Quick validation
 
@@ -659,13 +660,13 @@ Understanding the enemy:
 
 | Feature | llama.cpp | tinygrad (current) | tinygrad (goal) |
 |---------|-----------|-------------------|-----------------|
-| Fused dequant+matmul | Yes: Hand-tuned CUDA kernels read Q6_K natively | No: Dequant to fp16, store, then matmul | Yes: Scheduler fuses dequant into matmul |
-| Flash attention | Yes: Optional, +28% prefill | Exists but AMD-only / broken on PTX | PCONTIG/RANGEIFY or adapted Thunder kernel |
-| Tensor cores for matmul | Yes: Uses WMMA | Yes: Uses WMMA (via TC opt) | Already there, just needs better tiling via BEAM |
-| Kernel fusion | Yes: RMSNorm+rope fused, gate+up fused | Partial: Some fusion via scheduler | Better heuristics or BEAM |
-| KV cache | Yes: Contiguous, paged | Yes: Contiguous (cache_kv tensor) | Already comparable |
+| Fused dequant+matmul | Yes, hand-tuned CUDA kernels read Q6_K natively | No — dequant to fp16, store, then matmul | Scheduler fuses dequant into matmul |
+| Flash attention | Yes, optional, +28% prefill | Available but AMD-only / broken on PTX | PCONTIG/RANGEIFY or adapted Thunder kernel |
+| Tensor cores for matmul | Yes, uses WMMA | Yes, uses WMMA (via TC opt) | Already there, just needs better tiling via BEAM |
+| Kernel fusion | Yes — RMSNorm+rope fused, gate+up fused | Some fusion via scheduler | Better heuristics or BEAM |
+| KV cache | Contiguous, paged | Contiguous (cache_kv tensor) | Already comparable |
 | Memory bandwidth util | ~25% of theoretical | ~8% of theoretical | ~20-25% (matching llama.cpp) |
-| Quantized KV cache | Yes: Optional (Q8_0) | No: fp16 only | Future |
+| Quantized KV cache | Optional (Q8_0) | fp16 only | Future |
 | Weight format | Reads GGUF natively | Dequants GGUF to fp16 | Reads GGUF natively (Phase 2) |
 
 The single most impactful difference is **fused dequant+matmul**. Everything else is incremental. If we solve Phase 2, we should be within striking distance of llama.cpp.
@@ -674,13 +675,13 @@ The single most impactful difference is **fused dequant+matmul**. Everything els
 
 ## Success Metric
 
-**Goal: ≥20 tok/s on LLaMA 3.2 1B Q6_K with `NV=1`**
+**Goal: >=20 tok/s on LLaMA 3.2 1B Q6_K with `NV=1`**
 
 That would be within 25% of llama.cpp (no FA), which is remarkable for a general-purpose compiler with no hand-written kernels.
 
-**Stretch goal: ≥25 tok/s** — matching llama.cpp.
+**Stretch goal: >=25 tok/s** — matching llama.cpp.
 
-**Ultimate goal: ≥28 tok/s** — beating llama.cpp with flash attention. This requires fused dequant+matmul + BEAM-tuned kernels + some attention fusion.
+**Ultimate goal: >=28 tok/s** — beating llama.cpp with flash attention. This requires fused dequant+matmul + BEAM-tuned kernels + some attention fusion.
 
 ---
 
