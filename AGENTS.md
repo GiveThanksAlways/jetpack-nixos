@@ -43,8 +43,10 @@ cd llama-cpp-orin-nix-overlay && nix develop
 # vLLM dev shell
 cd vLLM && nix develop
 
-# tinygrad dev shell (CUDA + NV backend)
-cd tinygrad && nix develop
+# tinygrad dev shell (CUDA + NV backend, includes pytest)
+cd examples/tinygrad && nix develop
+# Then run tests from inside the shell:
+#   cd tinygrad && NV=1 python3 -m pytest test/test_ops.py -v --tb=short
 
 # view telemetry dashboards from your PC (user named agent)
 cd telemetry-viewer && ./connect-telemetry.sh <jetson-ip> <ssh-user>

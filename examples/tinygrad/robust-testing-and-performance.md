@@ -52,6 +52,26 @@ Validate the NV/Tegra backend is correct and robust, then benchmark it against C
 | `tests/conftest.py` | Shared test harness: backend detection, output comparison helpers, timing utilities, memory tracking | ⬜ TODO |
 | `tests/tegra_helpers.py` | Low-level ioctl helpers (already exists — extend as needed) | ✅ EXISTS |
 
+### Dev Shell (Nix Flake)
+
+All testing **must** use the tinygrad flake dev shell at `examples/tinygrad/flake.nix`. It provides the correct `pythonEnv` with all dependencies (numpy, tqdm, pillow, tiktoken, **pytest**, **hypothesis**, **torch**), CUDA libraries, and env vars for NixOS library discovery.
+
+> **PyTorch note:** We use a **CPU-only aarch64 wheel** (`torch 2.9.1+cpu`) to avoid a multi-hour source build. PyTorch is only used as a **reference implementation** for correctness comparison in tinygrad's test suite (`test_ops.py`, `test_nn.py`). It is NOT used for benchmarking — all performance comparisons are NV=1 vs CUDA=1 (both tinygrad backends).
+
+```bash
+cd /home/agent/jetpack-nixos/examples/tinygrad && nix develop
+cd tinygrad  # tinygrad source tree
+
+# Run tests with pytest (available in the flake):
+NV=1 python3 -m pytest test/test_ops.py -v --tb=short
+CUDA=1 python3 -m pytest test/test_ops.py -v --tb=short
+
+# Or use unittest:
+NV=1 python3 -m unittest test.test_ops -v
+```
+
+> **Note:** pytest was added to the flake's `pythonEnv`. Both `python3 -m pytest` and `python3 -m unittest` work. Prefer pytest for its better output formatting and `--tb=short` option.
+
 ### Kernel Log Checking (`dmesg_checker.py`)
 
 The dmesg checker is a critical part of our iteration loop. It automatically classifies GPU kernel messages:

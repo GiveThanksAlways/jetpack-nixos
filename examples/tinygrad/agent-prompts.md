@@ -415,4 +415,162 @@ Log each milestone so progress is visible.
 When you are done with Phase 4, write a `Learning-Phase4.md` that teaches the reader how things work — the linear history/iteration of how you discovered things, what broke, what surprised you, and the key concepts. Follow the same spirit as `Learning-Phase1.md`: chronological, honest about mistakes, with diagrams and code snippets that explain the "why" not just the "what."
 
 Good Luck and God Speed
+
+
+<!-- Starting section for robust testing and performance -->
+
+---
+
+## Prompt for Agent 5 — Phase 5: Robust Testing & Performance Benchmarking
+
+**Additional context files:** `robust-testing-and-performance.md` (master tracking doc — read ALL of it), `tests/dmesg_checker.py`, tinygrad's `ops_nv.py` (the backend under test), `tinygrad/tinygrad/runtime/support/hcq.py` (HCQ framework), and optionally `nv-attempt.md` (full build history)
+
 ```
+You are continuing a multi-phase project to build and harden a tinygrad NV backend ("TegraIface") for the NVIDIA Jetson Orin AGX 64GB. Phases 1-4 are COMPLETE — the TegraIface class is fully functional and 20/20 HCQ tests pass. Your job is Phase 5: Robust Testing & Performance Benchmarking.
+
+## Your Goal
+
+Complete all remaining phases in `robust-testing-and-performance.md` — specifically B2 through B6 (correctness tests) and Phase C (performance benchmarks). By the end, you should have:
+
+1. **B2** — `test_ops.py` results for NV=1 vs CUDA=1 (hundreds of tensor op tests)
+2. **B3** — `test_jit.py` results for NV=1 vs CUDA=1
+3. **B4** — `tests/test_tegra_edge_cases.py` written and passing (15 edge-case tests)
+4. **B5** — `tests/test_tegra_stress.py` written and passing (8 stress tests)
+5. **B6** — `tests/test_tegra_models.py` written and passing (4 model tests)
+6. **Phase C** — Performance benchmark results (matmul, bandwidth, launch overhead, element-wise, model inference)
+7. **`robust-testing-and-performance.md`** updated with all results
+8. Any bugs found → fixed in `ops_nv.py` and documented
+
+## What Is Already Done (DO NOT REDO)
+
+- ✅ **B1 (test_hcq.py):** 20/20 pass — results already in the doc
+- ✅ **dmesg_checker.py:** Built and working — use it during tests
+- ✅ **QMD reuse race:** FIXED (pushbuffer-based signal on Tegra)
+- ✅ **nvmap tag warnings:** FIXED (`_NVMAP_TAG_TINYGRAD = 0x0900`)
+- ✅ All changes committed on branch `nv-agx-orin-dev-kit`
+
+## Critical Technical Details
+
+### Device
+- **Jetson Orin AGX 64GB:** JetPack 6, L4T r36.4.4, Kernel 5.15.148, CUDA 12.6
+- **GPU:** ga10b iGPU, Ampere arch, SM 8.7, compute class 0xc7c0
+- **Memory:** Unified (VRAM=0) — CPU and GPU share the same DRAM. IO-coherent via AXI fabric.
+- **tinygrad:** v0.12.0, commit cc9bf8cc on branch `nv-agx-orin-dev-kit`
+
+### Key Code Locations
+- **TegraIface:** `tinygrad/tinygrad/runtime/ops_nv.py` ~L575-1100
+- **NVDevice:** `tinygrad/tinygrad/runtime/ops_nv.py` ~L1100+
+- **HCQ framework:** `tinygrad/tinygrad/runtime/support/hcq.py`
+- **dmesg checker:** `tests/dmesg_checker.py`
+- **Test files to create:** `tests/test_tegra_edge_cases.py`, `tests/test_tegra_stress.py`, `tests/test_tegra_models.py`, `tests/benchmark_nv_vs_cuda.py`
+
+### Known Issues You Will Encounter
+1. **`test_map_cpu_buffer_to_device` fails** — `TegraAllocator.map()` is a no-op. CPU buffers can't be DMA-copied to GPU. If tests need this, implement `map()` or work around it.
+2. **Error cascade in test suite** — When one test fails and sets `device.error_state`, ALL subsequent tests fail in `setUp()`. Workaround: run tests individually with `python3 -m unittest TestClass.test_name` or use `--failfast`.
+3. **`invalidate_caches()` is NOP'd** — The `NV2080_CTRL_CMD_FB_FLUSH_GPU_CACHE` RM control is a no-op in TegraIface. This might cause stale data issues under certain access patterns. Test this in B4.
+4. **`TegraIface.free()` has a contradictory None check** — The inner `if mem.view is None` is always False when inside `if mem.view is not None`. May be correct by accident. Audit in B4.
+5. **`tu104_gr_init_commit_rtv_cb`** — harmless WARNING in dmesg on every GR context init. Known harmless, suppressed by dmesg_checker.
+
+### Test Infrastructure Patterns
+- **No pip, no pytest** — Use `python3 -m unittest` (it's in the stdlib). tinygrad's test suite also supports this.
+- **Backend selection:** `NV=1` for our Tegra backend, `CUDA=1` for the reference CUDA backend
+- **Tolerance:** Use `atol=1e-4` for float32 comparisons between NV=1 and CUDA=1
+- **dmesg checking:** Wrap tests with `DmesgChecker` context manager to catch GPU errors:
+  ```python
+  from dmesg_checker import DmesgChecker
+  with DmesgChecker() as dc:
+      run_test()
+  assert dc.report.is_clean, dc.report.summary()
+  ```
+
+## Dev Environment
+
+- **NixOS dev shell:** `cd /home/agent/jetpack-nixos/examples/tinygrad && nix develop --command bash`
+- **Run tinygrad tests:** `cd tinygrad && NV=1 python3 -m unittest discover -s test -p "test_ops.py" -v`
+- **Run individual test:** `NV=1 python3 -m unittest test.test_ops.TestOps.test_add`
+- **Run custom tests:** `NV=1 python3 -m unittest tests.test_tegra_edge_cases -v`
+- **Check kernel logs:** `dmesg | tail -30` or `python3 tests/dmesg_checker.py`
+- **tinygrad source:** `tinygrad/` subdir (it's a git submodule)
+- **Our test files:** `tests/` subdir (at same level as `tinygrad/`)
+
+## Execution Order
+
+### Step 1: B2 — Run test_ops.py
+```bash
+cd /home/agent/jetpack-nixos/examples/tinygrad/tinygrad
+
+# NV=1 — our backend
+NV=1 python3 -m pytest test/test_ops.py -v --tb=short 2>&1 | tee ../tests/results_ops_nv.log
+
+# CUDA=1 — reference
+CUDA=1 python3 -m pytest test/test_ops.py -v --tb=short 2>&1 | tee ../tests/results_ops_cuda.log
+```
+Count passes/failures/errors for both. Record in the doc. If NV=1 has failures that CUDA=1 doesn't, investigate and fix in ops_nv.py.
+
+### Step 2: B3 — Run test_jit.py
+```bash
+NV=1 python3 -m pytest test/test_jit.py -v --tb=short 2>&1 | tee ../tests/results_jit_nv.log
+CUDA=1 python3 -m pytest test/test_jit.py -v --tb=short 2>&1 | tee ../tests/results_jit_nv.log
+```
+
+### Step 3: B4 — Write and run test_tegra_edge_cases.py
+Create `tests/test_tegra_edge_cases.py` with the 15 tests listed in `robust-testing-and-performance.md`. Each test should:
+- Use `unittest.TestCase`
+- Clear and check dmesg around GPU operations
+- Compare against expected values or CUDA=1 output
+- Clean up allocations (no resource leaks)
+
+### Step 4: B5 — Write and run test_tegra_stress.py
+Create `tests/test_tegra_stress.py` with the 8 stress tests. These are longer-running (some take 30-60s). Use timeouts.
+
+### Step 5: B6 — Write and run test_tegra_models.py
+Create `tests/test_tegra_models.py` with the 4 model tests. Use random weights (seeded for reproducibility). Compare NV=1 vs CUDA=1 outputs.
+
+### Step 6: Phase C — Performance Benchmarks
+Only after all B phases are green. Create `tests/benchmark_nv_vs_cuda.py` that:
+- Runs each benchmark (matmul, bandwidth, latency, element-wise, model inference)
+- Outputs JSON results
+- Calculates NV/CUDA % ratios
+
+### Step 7: Update the doc
+Fill in ALL the results tables in `robust-testing-and-performance.md`. Update the Results Log section.
+
+## Bug Fixing
+
+When you find NV=1 failures that don't occur on CUDA=1:
+1. Isolate the failing test to a minimal reproducer
+2. Check dmesg for GPU errors (sked exception, MMU fault, etc.)
+3. Look at the TegraIface code path the test exercises
+4. Fix in `ops_nv.py`
+5. Re-run the test AND all B1 tests (to check for regressions)
+6. Document the fix in the "Known Bugs" table and Results Log
+
+## Important Patterns From Prior Work
+
+- **QMD reuse race was the hardest bug** — it manifested as occasional val=198 instead of 200 in `test_exec_2_kernels_100_times`. Root cause: fast MMIO doorbell on Tegra. Fix: `NVComputeQueue._tegra_signal = True` forces pushbuffer-based signal release. NEW bugs may have similar timing-dependent symptoms.
+- **Making cmdq_page WC causes sked exceptions** — PBDMA requires cacheable pushbuffer on Tegra. Never change cmdq_page cacheability.
+- **INNER_CACHEABLE memory IS coherent** — Tegra's AXI fabric provides IO coherence. Don't add unnecessary cache flushes.
+- **Error cascade** — One failed test poisons `device.error_state` and all subsequent tests fail. Run tests individually to avoid this.
+
+## What Success Looks Like
+
+- All B2-B6 results recorded in the doc
+- NV=1 pass rate matches or is very close to CUDA=1 pass rate (accounting for known limitations like single GPU)
+- Phase C benchmark tables completely filled in with NV/CUDA % ratios
+- Any bugs found are either fixed (with regression testing) or documented as known issues
+- `robust-testing-and-performance.md` is a complete, publishable report of NV backend quality on Jetson Orin
+- All test files committed to the repo
+
+## Commit Strategy
+
+Commit after each major milestone:
+1. After B2+B3 results (update doc)
+2. After writing B4+B5+B6 test files
+3. After all B tests pass (update doc with results)
+4. After Phase C benchmarks (update doc with results)
+
+Use descriptive commit messages like: "Add B2/B3 test results: X/Y ops pass, Z/W jit pass"
+
+Good Luck and God Speed
+```
+
