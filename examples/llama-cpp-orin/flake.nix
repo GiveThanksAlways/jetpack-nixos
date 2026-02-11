@@ -2,7 +2,10 @@
   description = "llama.cpp for Jetson Orin AGX";
 
   inputs = {
-    llama-cpp.url = "github:ggml-org/llama.cpp/9a5f57795c01c6e67a53eeedeae67ed63aaf7f8e";
+    # note: will update to my github with pinned hash later
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    llama-cpp.url = "path:./llama-flake";
+    llama-cpp.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, llama-cpp, ... }:
@@ -10,10 +13,7 @@
       system = "aarch64-linux";
       # Use llama-cpp's nixpkgs to avoid derivation hash mismatch
       pkgs = llama-cpp.inputs.nixpkgs.legacyPackages.${system};
-      llamaCpp = (llama-cpp.packages.${system}.jetson-orin).overrideAttrs (old: {
-        buildInputs = old.buildInputs ++ [ pkgs.openssl ];
-        cmakeFlags = old.cmakeFlags ++ [ "-DLLAMA_OPENSSL=ON" ];
-      });
+      llamaCpp = llama-cpp.packages.${system}.default;
     in
     {
       packages.${system}.default = llamaCpp;
