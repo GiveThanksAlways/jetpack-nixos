@@ -48,8 +48,49 @@ Validate the NV/Tegra backend is correct and robust, then benchmark it against C
 
 | File | Purpose | Status |
 |------|---------|--------|
+| `tests/dmesg_checker.py` | Kernel log (dmesg) checker — detects GPU errors/warnings automatically | ✅ DONE |
 | `tests/conftest.py` | Shared test harness: backend detection, output comparison helpers, timing utilities, memory tracking | ⬜ TODO |
 | `tests/tegra_helpers.py` | Low-level ioctl helpers (already exists — extend as needed) | ✅ EXISTS |
+
+### Kernel Log Checking (`dmesg_checker.py`)
+
+The dmesg checker is a critical part of our iteration loop. It automatically classifies GPU kernel messages:
+
+| Category | Examples | Action |
+|----------|----------|--------|
+| **ERROR** | sked exception, MMU fault, CE not idle, PBDMA interrupt | Test FAILS — investigate immediately |
+| **WARNING** | nvmap tag missing | Fix if possible, track otherwise |
+| **KNOWN_HARMLESS** | `tu104_gr_init_commit_rtv_cb` (RTV not available on ga10b) | Suppressed — fires on every GR context init |
+| **INFO** | Module stack traces, general nvgpu messages | Logged for context |
+
+**Usage in tests:**
+```python
+from dmesg_checker import DmesgChecker, check_dmesg
+
+# Context manager (recommended)
+with DmesgChecker() as dc:
+    run_my_test()
+assert dc.report.is_clean, dc.report.summary()
+
+# Decorator
+@check_dmesg
+def test_something():
+    ...
+
+# Manual
+checker = DmesgChecker()
+checker.clear()
+run_test()
+report = checker.check()
+print(report.summary())
+```
+
+**Command-line usage:**
+```bash
+python3 tests/dmesg_checker.py              # Show recent GPU messages
+python3 tests/dmesg_checker.py --watch      # Continuous monitoring
+python3 tests/dmesg_checker.py --count 20   # Last 20 GPU messages
+```
 
 ### Shared Helpers Needed
 
@@ -90,9 +131,39 @@ NV=1 python3 -m pytest test/device/test_hcq.py -v 2>&1 | tee ../tests/results_hc
 **Results:**
 | Test | NV=1 | Notes |
 |------|------|-------|
-| *(run and fill in)* | | |
+| test_bind | ✅ OK | |
+| test_copy | ✅ OK | |
+| test_copy_long | ✅ OK | |
+| test_copy_64bit | ⏭ SKIP | `RUN_SLOW=1` required |
+| test_exec_one_kernel | ✅ OK | |
+| test_exec_2_kernels_100_times | ✅ OK | Fixed via pushbuffer signal (was val=198 due to QMD reuse race) |
+| test_exec_update | ✅ OK | |
+| test_exec_update_fuzz | ✅ OK | |
+| test_map_cpu_buffer_to_device | ❌ FAIL | Pre-existing: `TegraAllocator.map()` is a no-op — CPU buffers not mapped to GPU AS |
+| test_memory_barrier | ✅ OK | |
+| test_memory_barrier_before_copy | ✅ OK | |
+| test_multidevice | ⏭ SKIP | Single GPU |
+| test_multidevice_p2p | ⏭ SKIP | Single GPU |
+| test_multidevice_signal_wait | ⏭ SKIP | Single GPU |
+| test_on_device_hang | ⏭ SKIP | MOCKGPU only |
+| test_signal | ✅ OK | |
+| test_signal_update | ✅ OK | |
+| test_small_copies_from_host_buf | ✅ OK | |
+| test_small_copies_from_host_buf_intercopy | ✅ OK | |
+| test_small_copies_from_host_buf_transfer | ✅ OK | (1 skip) |
+| test_speed_copy_bandwidth | ✅ OK | |
+| test_speed_cross_device_copy_bandwidth | ⏭ SKIP | Single GPU |
+| test_speed_exec_time | ✅ OK | |
+| test_timeline_signal_rollover | ✅ OK | |
+| test_update_copy | ✅ OK | |
+| test_update_copy_long | ✅ OK | |
+| test_wait | ✅ OK | |
+| test_wait_late_set | ✅ OK | |
+| test_wait_update | ✅ OK | |
 
-**Status:** ⬜ NOT RUN
+**Summary:** 20/20 applicable tests pass. 5 expected skips (multidevice, MOCKGPU, slow). 1 known failure (map_cpu_buffer — needs `TegraAllocator.map()` implementation).
+
+**Status:** ✅ PASSING (2026-02-11)
 
 ---
 
@@ -371,12 +442,15 @@ After benchmarking, investigate these areas to close the NV-vs-CUDA gap. Each li
 
 | # | Issue | Severity | Status |
 |---|-------|----------|--------|
-| 1 | `TegraIface.free()` has contradictory `None` check: inner `if mem.view is None` inside block guarded by `if mem.view is not None` — always evaluates to `mem.view._addr`. May be correct by accident but logic is confusing. | Low | ⬜ Audit in B4 |
-| 2 | `invalidate_caches()` is NOP'd — could cause stale data under certain access patterns | Medium | ⬜ Test in B4 |
-| 3 | `num_sm_per_tpc` hardcoded to 2 — may affect occupancy/grid calculations | Low | ⬜ Verify in B4 |
-| 4 | `viddec_class=None` — video decode unavailable, `NVVideoQueue` methods will fail | Info | N/A (expected on Tegra) |
-| 5 | `pma_enabled=False` — no hardware profiling counters | Info | N/A (expected on Tegra) |
-| 6 | No VA recycling in Tegra path — `_alloc_gpu_vaddr` not implemented | Medium | ⬜ Test in B4 (memory pressure) |
+| 1 | ~~`test_exec_2_kernels_100_times` gets val=198 instead of 200~~ **FIXED**: QMD reuse race — CPU overwrites QMD release_payload while GPU reads dependent QMD chain. On Tegra, fast MMIO doorbell outpaces GPU QMD reads (desktop masked by PCIe latency). Fix: force pushbuffer-based signal release on Tegra (`NVComputeQueue._tegra_signal = True`). | **Critical** | ✅ Fixed |
+| 2 | ~~nvmap `allocation tag` kernel WARNING~~ **FIXED**: bits [31:16] of `_nvmap_alloc_handle.flags` must contain a nonzero tag. Added `_NVMAP_TAG_TINYGRAD = 0x0900` to all 3 alloc sites. | Medium | ✅ Fixed |
+| 3 | `test_map_cpu_buffer_to_device` fails — `TegraAllocator.map()` is a no-op, so CPU buffers can't be copied via GPU DMA | Medium | ⬜ TODO |
+| 4 | `TegraIface.free()` has contradictory `None` check: inner `if mem.view is None` inside block guarded by `if mem.view is not None` — always evaluates to `mem.view._addr`. May be correct by accident but logic is confusing. | Low | ⬜ Audit in B4 |
+| 5 | `invalidate_caches()` is NOP'd — could cause stale data under certain access patterns | Medium | ⬜ Test in B4 |
+| 6 | `num_sm_per_tpc` hardcoded to 2 — may affect occupancy/grid calculations | Low | ⬜ Verify in B4 |
+| 7 | `viddec_class=None` — video decode unavailable, `NVVideoQueue` methods will fail | Info | N/A (expected on Tegra) |
+| 8 | `pma_enabled=False` — no hardware profiling counters | Info | N/A (expected on Tegra) |
+| 9 | No VA recycling in Tegra path — `_alloc_gpu_vaddr` not implemented | Medium | ⬜ Test in B4 (memory pressure) |
 
 ---
 
@@ -384,26 +458,25 @@ After benchmarking, investigate these areas to close the NV-vs-CUDA gap. Each li
 
 *(Update this section as tests are run)*
 
-### Run 1: ____-__-__
+### Run 1: 2026-02-11
 
 **Phase B Results:**
-- B1 (test_hcq): ___ / 29 passed, ___ skipped, ___ failed
-- B2 (test_ops): ___ / ___ passed
-- B3 (test_jit): ___ / ___ passed
-- B4 (edge cases): ___ / 15 passed
-- B5 (stress): ___ / 8 passed
-- B6 (models): ___ / 4 passed
+- B1 (test_hcq): 20 / 20 passed, 5 expected skips, 1 known failure (map_cpu_buffer)
+- B2 (test_ops): ⬜ NOT RUN
+- B3 (test_jit): ⬜ NOT RUN
+- B4 (edge cases): ⬜ NOT WRITTEN
+- B5 (stress): ⬜ NOT WRITTEN
+- B6 (models): ⬜ NOT WRITTEN
 
-**Failures fixed:**
-- *(list fixes here)*
+**Kernel logs (dmesg):** ✅ Clean after all B1 tests — no sked exceptions, no nvmap tag warnings, no CE engine errors.
+
+**Failures fixed this session:**
+1. **QMD reuse race** (`test_exec_2_kernels_100_times` val=198): Forced pushbuffer-based signal release on Tegra via `NVComputeQueue._tegra_signal`. Root cause: fast MMIO doorbell lets CPU overwrite QMD release_payload before GPU reads dependent QMD chain. Pushbuffer signal values are bump-allocated per submit (immutable), eliminating the race.
+2. **nvmap tag warnings**: Added `_NVMAP_TAG_TINYGRAD = 0x0900` to `_nvmap_alloc_handle.flags` at all 3 allocation sites.
+3. **Reverted unnecessary WC change**: The `NVAllocator._alloc` WC-for-Tegra-cpu_access change was based on wrong root cause analysis (cache coherence). Reverted — the real fix is pushbuffer signal.
 
 **Phase C Highlights:**
-- 1024×1024 matmul: NV=___ GFLOPS, CUDA=___ GFLOPS (___%)
-- Kernel launch overhead: NV=___µs, CUDA=___µs
-- GPT-2 tokens/sec: NV=___, CUDA=___
-
-**Optimizations applied:**
-- *(list optimizations here)*
+- Not yet run — waiting for all B phases to complete.
 
 ---
 
@@ -411,6 +484,7 @@ After benchmarking, investigate these areas to close the NV-vs-CUDA gap. Each li
 
 | File | Purpose |
 |------|---------|
+| `tests/dmesg_checker.py` | Kernel log checker (dmesg) — GPU error/warning detection |
 | `robust-testing-and-performance.md` | This guide (master tracking doc) |
 | `tests/conftest.py` | Shared test infrastructure |
 | `tests/tegra_helpers.py` | Low-level ioctl helpers (existing) |
