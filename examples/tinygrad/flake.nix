@@ -45,13 +45,54 @@
           pythonImportsCheck = [ "tinygrad" ];
         };
 
+        # Pre-built PyTorch CPU wheel from PyTorch's official aarch64 builds.
+        # This avoids the 1-4 hour source build that ps.torch triggers.
+        # CPU-only is fine — torch is only used as a reference implementation
+        # for correctness comparison in tinygrad's test suite (test_ops.py, test_nn.py).
+        torch-bin = pkgs.python3Packages.buildPythonPackage {
+          pname = "torch";
+          version = "2.9.1+cpu";
+          format = "wheel";
+
+          src = pkgs.fetchurl {
+            name = "torch-2.9.1-cp313-cp313-linux_aarch64.whl";
+            url = "https://download.pytorch.org/whl/cpu/torch-2.9.1%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl";
+            hash = "sha256-PlMuVTs37oWSBamy0ceXf9aSL1O7sbm/3VvcANGmDtQ=";
+          };
+
+          nativeBuildInputs = [
+            pkgs.autoPatchelfHook
+          ];
+
+          buildInputs = [
+            pkgs.stdenv.cc.cc.lib  # libstdc++.so
+            pkgs.zlib              # libz.so.1
+          ];
+
+          dependencies = with pkgs.python3Packages; [
+            filelock
+            typing-extensions
+            setuptools
+            sympy
+            networkx
+            jinja2
+            fsspec
+          ];
+
+          pythonImportsCheck = [ "torch" ];
+          doCheck = false;
+        };
+
         pythonEnv = pkgs.python3.withPackages (ps: [
           tinygrad
+          torch-bin
           ps.numpy
           ps.tqdm
           ps.requests
           ps.pillow
           ps.tiktoken  # for GPT-2 tokenization
+          ps.pytest  # for running tinygrad's test suite
+          ps.hypothesis  # for property-based tests (test_jit.py, test_tensor.py)
         ]);
       in
       {
