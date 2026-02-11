@@ -11,7 +11,7 @@ Output: JSON results file + human-readable summary.
 import os, sys, time, json, argparse, gc
 import numpy as np
 
-os.environ.setdefault("NV", "1")
+os.environ.setdefault("NV", "1") if "CUDA" not in os.environ else None
 
 from tinygrad import Tensor, Device, dtypes
 from tinygrad.helpers import getenv

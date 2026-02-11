@@ -1,0 +1,151 @@
+{
+  "backend": "CUDA",
+  "timestamp": "2026-02-11 04:35:29",
+  "device": "Jetson Orin AGX 64GB",
+  "matmul": [
+    {
+      "size": 256,
+      "dtype": "dtypes.float",
+      "gflops": 12.4,
+      "median_ms": 2.6968659985868726,
+      "mean_ms": 2.7060426199022913,
+      "min_ms": 2.6269789996149484,
+      "p99_ms": 2.841472000000067,
+      "iters": 50
+    },
+    {
+      "size": 512,
+      "dtype": "dtypes.float",
+      "gflops": 28.7,
+      "median_ms": 9.34207200043602,
+      "mean_ms": 8.957748560060281,
+      "min_ms": 6.9033149993629195,
+      "p99_ms": 9.793171000637813,
+      "iters": 50
+    },
+    {
+      "size": 1024,
+      "dtype": "dtypes.float",
+      "gflops": 89.6,
+      "median_ms": 23.964340001839446,
+      "mean_ms": 24.856613779702457,
+      "min_ms": 20.303229001001455,
+      "p99_ms": 35.56251299960422,
+      "iters": 50
+    },
+    {
+      "size": 2048,
+      "dtype": "dtypes.float",
+      "gflops": 132.6,
+      "median_ms": 129.54322299992782,
+      "mean_ms": 129.4888300000821,
+      "min_ms": 127.4572629990871,
+      "p99_ms": 130.12670500029344,
+      "iters": 20
+    },
+    {
+      "size": 4096,
+      "dtype": "dtypes.float",
+      "gflops": 138.1,
+      "median_ms": 995.2444560003642,
+      "mean_ms": 995.2266594496905,
+      "min_ms": 994.9520150003082,
+      "p99_ms": 995.5475240021769,
+      "iters": 20
+    }
+  ],
+  "bandwidth": [
+    {
+      "size_mb": 1,
+      "copyin_gb_s": 0.62,
+      "copyin_ms": 1.695,
+      "copyout_gb_s": 1.74,
+      "copyout_ms": 0.603,
+      "d2d_gb_s": 0.89,
+      "d2d_ms": 1.173,
+      "alloc_ms": 1.253
+    },
+    {
+      "size_mb": 16,
+      "copyin_gb_s": 1.99,
+      "copyin_ms": 8.421,
+      "copyout_gb_s": 3.76,
+      "copyout_ms": 4.465,
+      "d2d_gb_s": 5.65,
+      "d2d_ms": 2.969,
+      "alloc_ms": 2.471
+    },
+    {
+      "size_mb": 256,
+      "copyin_gb_s": 3.77,
+      "copyin_ms": 71.294,
+      "copyout_gb_s": 1.45,
+      "copyout_ms": 185.338,
+      "d2d_gb_s": 15.75,
+      "d2d_ms": 17.047,
+      "alloc_ms": 13.123
+    }
+  ],
+  "kernel_launch": {
+    "trivial_median_us": 959.9,
+    "trivial_p99_us": 2636.9,
+    "trivial_min_us": 927.6
+  },
+  "elementwise": [
+    {
+      "op": "add",
+      "elements": 1000000,
+      "gb_s": 5.0,
+      "median_ms": 1.601
+    },
+    {
+      "op": "mul",
+      "elements": 1000000,
+      "gb_s": 4.7,
+      "median_ms": 1.701
+    },
+    {
+      "op": "exp",
+      "elements": 1000000,
+      "gb_s": 3.83,
+      "median_ms": 2.088
+    },
+    {
+      "op": "relu",
+      "elements": 1000000,
+      "gb_s": 3.12,
+      "median_ms": 2.567
+    },
+    {
+      "op": "add",
+      "elements": 10000000,
+      "gb_s": 16.8,
+      "median_ms": 4.763
+    },
+    {
+      "op": "mul",
+      "elements": 10000000,
+      "gb_s": 17.37,
+      "median_ms": 4.605
+    },
+    {
+      "op": "exp",
+      "elements": 10000000,
+      "gb_s": 13.77,
+      "median_ms": 5.811
+    },
+    {
+      "op": "relu",
+      "elements": 10000000,
+      "gb_s": 12.16,
+      "median_ms": 6.577
+    }
+  ],
+  "model_inference": {
+    "model": "MLP-784-256-128-10",
+    "batch_size": 64,
+    "median_ms": 10.022,
+    "p99_ms": 10.202,
+    "throughput_samples_per_sec": 6386.0
+  }
+}
