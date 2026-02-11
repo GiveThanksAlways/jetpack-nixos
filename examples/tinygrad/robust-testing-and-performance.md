@@ -492,6 +492,66 @@ CUDA=1 python3 tests/benchmark_nv_vs_cuda.py --output tests/results_cuda.json
 echo "=== Comparison ==="
 python3 tests/generate_comparison.py tests/results_nv.json tests/results_cuda.json
 ```
+
+---
+
+## Phase E: Big-Picture Model Benchmarks (TODO)
+
+Micro-benchmarks (Phase C) show NV=1 wins on matmul, bandwidth, and element-wise ops. **Phase E asks: does that translate to real-world LLM inference speed?**
+
+### E1. GPT-2 — tinygrad NV=1 vs CUDA=1
+
+Run tinygrad's built-in `examples/gpt2.py` on both backends. Measure:
+- **Prompt processing** (prefill): tokens/sec for a fixed input
+- **Token generation** (decode): tokens/sec steady-state
+- **Time to first token** (TTFT)
+
+**Model:** GPT-2 124M (smallest — `--model_size gpt2`). Downloads from HuggingFace automatically.
+
+```bash
+cd /home/agent/jetpack-nixos/examples/tinygrad/tinygrad
+
+# NV=1
+NV=1 python3 examples/gpt2.py --model_size gpt2 --count 50 --temperature 0 --timing 2>&1 | tee ../tests/results_gpt2_nv.log
+
+# CUDA=1
+CUDA=1 python3 examples/gpt2.py --model_size gpt2 --count 50 --temperature 0 --timing 2>&1 | tee ../tests/results_gpt2_cuda.log
+```
+
+### E2. LLaMA 3.2 1B — tinygrad NV=1 vs CUDA=1
+
+Tinygrad's `examples/llama3.py` supports LLaMA 3.2 1B with Q6_K GGUF quantization — fits easily in 64GB.
+
+```bash
+# NV=1
+NV=1 python3 examples/llama3.py --size 1B --no_api --benchmark 2>&1 | tee ../tests/results_llama3_nv.log
+
+# CUDA=1
+CUDA=1 python3 examples/llama3.py --size 1B --no_api --benchmark 2>&1 | tee ../tests/results_llama3_cuda.log
+```
+
+### E3. Three-Way: tinygrad NV=1 vs CUDA=1 vs llama.cpp
+
+Compare the same model across all three backends. **Model: LLaMA 3.2 1B Q6_K GGUF** — supported by both tinygrad and llama.cpp.
+
+**llama.cpp** (from the `llama-cpp-orin-nix-overlay` flake):
+```bash
+cd /home/agent/jetpack-nixos/examples/llama-cpp-orin-nix-overlay && nix develop
+llama-cli -hf bartowski/Llama-3.2-1B-Instruct-GGUF:Q6_K -ngl 999 \
+  --prompt "What is the answer to life, the universe, and everything?" \
+  -n 50 --temp 0 2>&1 | tee ../tinygrad/tests/results_llama3_llamacpp.log
+```
+
+### Results (to be filled)
+
+| Backend | Model | Prefill tok/s | Decode tok/s | TTFT (ms) | Notes |
+|---------|-------|---------------|--------------|-----------|-------|
+| NV=1 | GPT-2 124M | — | — | — | |
+| CUDA=1 | GPT-2 124M | — | — | — | |
+| NV=1 | LLaMA 3.2 1B Q6_K | — | — | — | |
+| CUDA=1 | LLaMA 3.2 1B Q6_K | — | — | — | |
+| llama.cpp | LLaMA 3.2 1B Q6_K | — | — | — | |
+
 ---
 
 ## Phase D: Optimization Opportunities
