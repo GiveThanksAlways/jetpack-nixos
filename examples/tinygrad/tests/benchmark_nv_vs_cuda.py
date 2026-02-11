@@ -46,8 +46,7 @@ def bench_matmul(results):
     configs = [
         (256, dtypes.float32), (512, dtypes.float32), (1024, dtypes.float32),
         (2048, dtypes.float32), (4096, dtypes.float32),
-        # fp16 disabled: cuda_fp16.h not found in NixOS NVRTC include path
-        # (1024, dtypes.float16), (2048, dtypes.float16), (4096, dtypes.float16),
+        (1024, dtypes.float16), (2048, dtypes.float16), (4096, dtypes.float16),
     ]
 
     matmul_results = []

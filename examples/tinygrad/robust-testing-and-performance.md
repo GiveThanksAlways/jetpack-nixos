@@ -18,25 +18,27 @@
 | Phase | Suite | Passed | Failed | Notes |
 |-------|-------|--------|--------|-------|
 | B1 | test_hcq.py (HCQ framework) | 20/20 | 0 | 5 expected skips (multidevice), 1 known (map_cpu_buffer) |
-| B2 | test_ops.py (408 tensor ops) | 408/408 | 0 | 1 env failure (fp16 — same on CUDA=1), 7 skips |
+| B2 | test_ops.py (409 tensor ops) | 409/409 | 0 | 7 skips. fp16 gemm now passes (fixed CUDA_INCLUDE_PATH) |
 | B3 | test_jit.py (JIT fusion) | 38/38 | 0 | 6 env failures (all fail on CPU too — NixOS subprocess sandboxing) |
 | B4 | test_tegra_edge_cases.py | 15/15 | 0 | VA boundary, memory pressure, DMA copy, dtypes, GPFIFO wraparound |
 | B5 | test_tegra_stress.py | 8/8 | 0 | 10K kernels, 60s sustained matmul, memory churn, backpressure |
 | B6 | test_tegra_models.py | 4/4 | 0 | MLP, CNN, Transformer block, 10-layer deep MLP |
-| **Total** | | **493/493** | **0** | All applicable tests pass on NV=1 |
+| **Total** | | **494/494** | **0** | All applicable tests pass on NV=1 |
 
 ### Performance: NV=1 vs CUDA=1 (After Optimization)
 
 | Category | NV=1 | CUDA=1 | NV vs CUDA | Winner |
 |----------|------|--------|------------|--------|
-| Matmul 1024×1024 (GFLOPS) | 118.5 | 89.6 | **+32%** | NV ✅ |
-| Matmul 4096×4096 (GFLOPS) | 138.6 | 138.1 | ~same | Tie |
+| Matmul 1024×1024 f32 (GFLOPS) | 118.4 | 89.7 | **+32%** | NV ✅ |
+| Matmul 4096×4096 f32 (GFLOPS) | 138.6 | 138.1 | ~same | Tie |
+| Matmul 1024×1024 f16 (GFLOPS) | 387.5 | 307.3 | **+26%** | NV ✅ |
+| Matmul 4096×4096 f16 (GFLOPS) | 1552.5 | 1509.2 | **+3%** | NV ✅ |
 | Copyout D→H 16MB (GB/s) | **6.35** | 3.76 | **+69%** | NV ✅ |
 | Copyin H→D 256MB (GB/s) | **5.17** | 3.77 | **+37%** | NV ✅ |
 | D2D Copy 256MB (GB/s) | 18.60 | 15.75 | **+18%** | NV ✅ |
 | Kernel Launch p99 (µs) | 1199 | 2637 | **2.2× better** | NV ✅ |
 | Element-wise 10M (GB/s) | 22.0 | 16.8 | **+31%** | NV ✅ |
-| MLP Inference (ms) | 10.23 | 10.02 | ~same | Tie |
+| MLP Inference (ms) | 10.19 | 10.01 | ~same | Tie |
 | Alloc 256MB (ms) | 7.95 | 13.12 | **1.7× faster** | NV ✅ |
 
 ### Key Optimization: Direct Memcpy for Tegra Unified Memory
@@ -60,13 +62,14 @@ NV=1 went from 2-4.6× **slower** than CUDA=1 to 1.1-2.5× **faster**.
 | 1 | QMD reuse race — `test_exec_2_kernels` val=198 | Critical | Pushbuffer-based signal release on Tegra (`_tegra_signal = True`) |
 | 2 | nvmap allocation tag warnings in dmesg | Medium | Added `_NVMAP_TAG_TINYGRAD = 0x0900` to all alloc sites |
 | 3 | Copyout D→H 2-4.6× slower than CUDA=1 | Medium | Direct memmove for Tegra unified memory (skip DMA staging) |
+| 4 | `cuda_fp16.h` not found by NVRTC | Low | Fixed `CUDA_INCLUDE_PATH` → `cuda_cudart` include + patched `compiler_cuda.py` |
 
 ### Known Issues (Not Fixed)
 
 | # | Issue | Severity | Notes |
 |---|-------|----------|-------|
 | 1 | Sequential JIT tests segfault after ~27 tests | Medium | BumpAllocator for kernargs overflows — each test individually passes |
-| 2 | `cuda_fp16.h` not found by NVRTC | Low | NixOS include path issue — affects both NV=1 and CUDA=1 |
+| 2 | ~~`cuda_fp16.h` not found by NVRTC~~ **FIXED** | Low | Changed `CUDA_INCLUDE_PATH` to `cuda_cudart` include dir + patched `compiler_cuda.py` to use it |
 | 3 | `test_map_cpu_buffer_to_device` — TegraAllocator.map() is a no-op | Medium | CPU buffers can't be DMA-copied via GPU |
 | 4 | 6 JIT tests fail on all backends (CPU, NV, CUDA) | Info | NixOS subprocess sandboxing issue, not backend-related |
 
@@ -269,19 +272,19 @@ diff <(grep -E "PASSED|FAILED|ERROR" ../tests/results_ops_nv.log) \
 **Results:**
 | Backend | Passed | Failed | Errors | Skipped |
 |---------|--------|--------|--------|---------|
-| NV=1    | 408    | 1      | 0      | 7       |
-| CUDA=1  | 408    | 1      | 0      | 7       |
+| NV=1    | 409    | 0      | 0      | 7       |
+| CUDA=1  | 409    | 0      | 0      | 7       |
 
-**Failures:**
-| Test | NV=1 | CUDA=1 | Root Cause |
-|------|------|--------|------------|
-| `test_gemm_fp16` | ❌ CompileError | ❌ CompileError | NVRTC can't find `cuda_fp16.h` — NixOS include path issue, not backend-specific |
+**Previously failing:**
+| Test | Before | After | Fix |
+|------|--------|-------|-----|
+| `test_gemm_fp16` | ❌ CompileError (both) | ✅ PASS (both) | Fixed `CUDA_INCLUDE_PATH` → `cuda_cudart` include dir, patched `compiler_cuda.py` to add `-I$CUDA_INCLUDE_PATH` |
 
 **Skipped:** `test_max_nan` (broken), `test_max_pool2d_unit_stride` (CUDA), `test_pow_int` (not supported), `test_sd_big_conv` (very slow), `test_strided_conv2d_simple_vec`, plus 2 others.
 
-**Duration:** NV=1 runs in ~3:41–6:20 (varies). All operations match between NV=1 and CUDA=1.
+**Duration:** NV=1 runs in ~3:39 (varies). All operations match between NV=1 and CUDA=1.
 
-**Status:** ✅ PASSING (2026-02-11) — 408/408 applicable tests pass on both backends
+**Status:** ✅ PASSING (2026-02-11) — 409/409 tests pass on both backends
 
 ---
 
@@ -402,11 +405,14 @@ Only run after **all Phase B tests pass**.
 | 1024×1024 | f32 | 118.8 | 89.6 | 133% | **NV significantly faster** |
 | 2048×2048 | f32 | 136.2 | 132.6 | 103% | Convergent at large sizes |
 | 4096×4096 | f32 | 138.6 | 138.1 | 100% | Both saturate at ~139 GFLOPS |
-| 1024×1024 | f16 | — | — | — | NVRTC can't find `cuda_fp16.h` (NixOS env) |
-| 2048×2048 | f16 | — | — | — | Same issue |
-| 4096×4096 | f16 | — | — | — | Same issue |
+| 1024×1024 | f16 | 387.5 | 307.3 | 126% | **NV 26% faster** |
+| 2048×2048 | f16 | 932.3 | 621.9 | 150% | **NV 50% faster** — huge f16 advantage |
+| 4096×4096 | f16 | 1552.5 | 1509.2 | 103% | Both near peak; NV still slightly faster |
 
-**Key finding:** NV=1 is 33-39% **faster** than CUDA=1 at medium sizes (512-1024), likely due to lower kernel launch overhead (no cuLaunchKernel wrapper). Both converge at large sizes where compute dominates.
+**Key findings:**
+- **fp32:** NV=1 is 32-39% **faster** at medium sizes (512-1024), converges at 4096 (~139 GFLOPS both)
+- **fp16:** NV=1 is 26-50% **faster** at medium sizes! Peak of **1552 GFLOPS** at 4096×4096 (11× the fp32 peak)
+- The fp16 advantage at medium sizes is even larger than fp32, likely because lower kernel launch overhead is more impactful when compute takes less time
 
 **Method:** 5 warmup + 50 timed iterations (≤1024), 20 iters (>1024). GFLOPS = 2N³ / time_seconds / 1e9.
 
@@ -605,6 +611,33 @@ def _copyout(self, dest:memoryview, src:HCQBuffer):
 ## Results Log
 
 *(Update this section as tests are run)*
+
+### Run 3: 2026-02-11 (fp16 Fix + Final Benchmarks)
+
+**Changes since Run 2:**
+1. **Fixed `cuda_fp16.h` include path:** Changed `CUDA_INCLUDE_PATH` from `cuda_nvrtc.dev` to `cuda_cudart` (which has `cuda_fp16.h`). Patched `compiler_cuda.py` to pass `-I$CUDA_INCLUDE_PATH` to NVRTC.
+2. **test_gemm_fp16 now passes** on both NV=1 and CUDA=1 → test_ops goes from 408/409 to **409/409**.
+3. **fp16 benchmarks enabled** in `benchmark_nv_vs_cuda.py`.
+
+**Phase B Results:**
+- B2 (test_ops): **409 / 409** passed ✅ (was 408 — `test_gemm_fp16` now passes!)
+- All other phases unchanged (still all green)
+
+**New Benchmark Numbers (fp16 matmul):**
+
+| Size | NV=1 GFLOPS | CUDA=1 GFLOPS | NV/CUDA |
+|------|-------------|---------------|---------|
+| 1024×1024 f16 | 387.5 | 307.3 | **+26%** |
+| 2048×2048 f16 | 932.3 | 621.9 | **+50%** |
+| 4096×4096 f16 | 1552.5 | 1509.2 | **+3%** |
+
+NV=1 peaks at **1552.5 GFLOPS** in fp16 (11× the fp32 peak), confirming the Orin's fp16 tensor core capability is fully utilized.
+
+**Model inference (C5):** NV=1 10.19ms vs CUDA=1 10.01ms — still essentially identical (~2% gap). The MLP benchmark is compute-dominated at these sizes; the copyout speedup shows up more in bandwidth-sensitive workloads.
+
+**Kernel logs (dmesg):** ✅ Clean
+
+---
 
 ### Run 2: 2026-02-11 (Post-Optimization)
 
