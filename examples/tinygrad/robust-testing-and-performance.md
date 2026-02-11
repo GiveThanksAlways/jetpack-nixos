@@ -37,6 +37,9 @@ Validate the NV/Tegra backend is correct and robust, then benchmark it against C
 └─────────────────────────────────────────────────┘
 ```
 
+> note: don't forget to look at the kernel logs (dmesg, journalctl, etc) for any warnings or errors that can help us in our building/debugging iteration loops. I have seen a few warnings/ errors on the UART myself, so always good to keep an eye on that
+> for example this helped: dmesg | grep -i nvgpu or dmesg | grep ga10b
+
 ---
 
 ## Phase A: Test Infrastructure
@@ -428,6 +431,8 @@ After benchmarking, investigate these areas to close the NV-vs-CUDA gap. Each li
 | [phase3.md](phase3.md) | Command submission (GPFIFO/QMD) |
 | [phase4.md](phase4.md) | TegraIface integration into tinygrad |
 | [Learning-Phase1.md](Learning-Phase1.md) | Methodology walkthrough (Phase 1) |
+| [Learning-Phase2.md](Learning-Phase2.md) | Methodology walkthrough (Phase 2) |
+| [Learning-Phase3.md](Learning-Phase3.md) | Methodology walkthrough (Phase 3) |
 | [Learning-Phase4.md](Learning-Phase4.md) | Methodology walkthrough (Phase 4) |
 
 ## Key Code Locations
