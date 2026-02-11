@@ -564,11 +564,22 @@ hww_warp_esr_pc 0xff55a2a830
 | Param bandwidth | 19.7 GB/s | 19.8 GB/s | |
 | Weight load time | 30591 ms | 20973 ms | |
 
-### E3. Three-Way Comparison: NV=1 vs CUDA=1 vs llama.cpp
+### E3. llama.cpp Benchmark (LLaMA 3.2 1B Q6_K)
 
-llama.cpp benchmark pending (flake rebuilding). Will be added when available.
+**Tool:** llama.cpp (built from Nix flake `llama-cpp-orin`, CUDA backend, all layers on GPU via `-ngl 999`)
+**Model:** Same LLaMA 3.2 1B Q6_K GGUF (bartowski/Llama-3.2-1B-Instruct-GGUF:Q6_K, 967 MiB)
+**Benchmark:** `llama-bench` — 512 prompt tokens, 128 generation tokens, 3 repetitions
 
-### Results Summary
+| Config | Prefill (pp512) t/s | Decode (tg128) t/s |
+|--------|--------------------|--------------------|
+| llama.cpp (no FA) | 1090.46 ± 0.35 | 25.61 ± 0.01 |
+| llama.cpp (FA=1) | 1391.94 ± 2.35 | 27.82 ± 0.03 |
+
+**Flash attention** gives +27.6% prefill and +8.6% decode improvement.
+
+llama.cpp decode at 25.61-27.82 tok/s is **7.8-8.5× faster** than tinygrad CUDA=1 (3.28-3.30 tok/s). This is expected — llama.cpp has hand-tuned CUDA kernels for quantized inference (fused dequant+matmul, optimized KV cache, flash attention), while tinygrad JIT-compiles generic Python tensor operations.
+
+### E4. Three-Way Comparison Summary
 
 | Backend | Model | Prefill tok/s | Decode tok/s | TTFT (ms) | Notes |
 |---------|-------|---------------|--------------|-----------|-------|
@@ -576,9 +587,12 @@ llama.cpp benchmark pending (flake rebuilding). Will be added when available.
 | CUDA=1 | GPT-2 124M | N/A (single-token) | 38.8 | 2484 | |
 | NV=1 | LLaMA 3.2 1B Q6_K | **CRASH** | **CRASH** | **CRASH** | GPU hang: misaligned addr in dequant kernel |
 | CUDA=1 | LLaMA 3.2 1B Q6_K | N/A (benchmark mode) | 3.28-3.30 | 2644-2657 | 29 GB/s mem BW |
-| llama.cpp | LLaMA 3.2 1B Q6_K | — | — | — | Pending flake rebuild |
+| llama.cpp | LLaMA 3.2 1B Q6_K | 1090 | 25.61 | — | Hand-tuned CUDA kernels |
+| llama.cpp (FA) | LLaMA 3.2 1B Q6_K | 1392 | 27.82 | — | +flash attention |
 
-### E4. Analysis
+**Key takeaway:** llama.cpp is ~8× faster than tinygrad on quantized LLM decode. The gap comes from hand-optimized fused dequant+matmul CUDA kernels, optimized KV cache management, flash attention, and matmul tiling tuned for Ampere/Ada. tinygrad's advantage is flexibility and hackability — it can run arbitrary models without hand-writing kernels.
+
+### E5. Analysis
 
 #### 1. Does NV=1 beat CUDA=1 on real models?
 

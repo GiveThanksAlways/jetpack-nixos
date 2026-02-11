@@ -1,0 +1,7 @@
+ggml_cuda_init: found 1 CUDA devices:
+  Device 0: Orin, compute capability 8.7, VMM: yes
+common_download_file_single_online: no previous model file found /home/agent/.cache/llama.cpp/bartowski_Llama-3.2-1B-Instruct-GGUF_preset.ini
+common_download_file_single_online: HEAD invalid http status code received: 404
+no remote preset found, skipping
+common_download_file_single_online: no previous model file found /home/agent/.cache/llama.cpp/bartowski_Llama-3.2-1B-Instruct-GGUF_Llama-3.2-1B-Instruct-Q6_K.gguf
+common_download_file_single_online: trying to download model from https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q6_K.gguf to /home/agent/.cache/llama.cpp/bartowski_Llama-3.2-1B-Instruct-GGUF_Llama-3.2-1B-Instruct-Q6_K.gguf.downloadInProgress (etag:"dae5e1f1e535eba5586dbc7b75cd496a04079435ce094e23af6599a45fbb554e")...
