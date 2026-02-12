@@ -1,109 +1,73 @@
 {
-  description = "MLC LLM dev shell for Jetson Orin AGX (native CUDA inference)";
+  description = "MLC LLM inference for Jetson Orin AGX — Docker-first with native fallback";
+
+  # ┌──────────────────────────────────────────────────────────────────────┐
+  # │ PREREQUISITE: Docker + NVIDIA Container Toolkit must be enabled     │
+  # │ in NixOS.  See ../nixos/ for the docker-bench configuration:        │
+  # │                                                                     │
+  # │   sudo nixos-rebuild switch --flake ../nixos#nixos-docker-bench     │
+  # │                                                                     │
+  # │ Then:  nix develop        # enters shell with docker + benchmark    │
+  # │        ./run-mlc-docker.sh                                          │
+  # │        python3 bench_mlc_llm.py                                     │
+  # └──────────────────────────────────────────────────────────────────────┘
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    jetpack-nixos.url = "github:anduril/jetpack-nixos";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, jetpack-nixos, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachSystem [ "aarch64-linux" ] (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
-          overlays = [ jetpack-nixos.overlays.default ];
         };
-        jetpack = pkgs.nvidia-jetpack6;
-        cuda = jetpack.cudaPackages;
       in
       {
+        # ── Primary dev shell: Docker-based MLC LLM ──────────────────
+        # Uses dustynv's Jetson-optimized MLC container.
+        # Provides python3 for the benchmark client script.
         devShells.default = pkgs.mkShell {
           name = "mlc-llm-orin";
 
           buildInputs = [
             pkgs.python3
-            pkgs.python3Packages.pip
-            pkgs.python3Packages.virtualenv
-            pkgs.python3Packages.numpy
-            pkgs.cmake
-            pkgs.ninja
-            pkgs.git
+            pkgs.python3Packages.requests
             pkgs.curl
+            pkgs.jq
             pkgs.wget
-            pkgs.pkg-config
-            pkgs.zlib
-            pkgs.openssl
-
-            # CUDA toolchain
-            (pkgs.lib.getLib cuda.cuda_cudart)
-            (pkgs.lib.getLib cuda.libcublas)
-            (pkgs.lib.getLib cuda.libcusparse)
-            (pkgs.lib.getLib cuda.libcusolver)
-            (pkgs.lib.getLib cuda.libcufft)
-            (pkgs.lib.getLib cuda.libcurand)
-            (pkgs.lib.getLib cuda.cuda_nvrtc)
-            (pkgs.lib.getLib cuda.libnvjitlink)
-            (pkgs.lib.getLib cuda.cudnn)
-          ];
-
-          CUDA_HOME = "${pkgs.lib.getDev cuda.cuda_cudart}";
-          CUDA_PATH = "${pkgs.lib.getDev cuda.cuda_cudart}";
-
-          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
-            (pkgs.lib.getLib cuda.cuda_cudart)
-            (pkgs.lib.getLib cuda.libcublas)
-            (pkgs.lib.getLib cuda.libcusparse)
-            (pkgs.lib.getLib cuda.libcusolver)
-            (pkgs.lib.getLib cuda.libcufft)
-            (pkgs.lib.getLib cuda.libcurand)
-            (pkgs.lib.getLib cuda.cuda_nvrtc)
-            (pkgs.lib.getLib cuda.libnvjitlink)
-            (pkgs.lib.getLib cuda.cudnn)
-            jetpack.l4t-cuda
-            jetpack.l4t-core
-            pkgs.stdenv.cc.cc
-            pkgs.zlib
           ];
 
           shellHook = ''
             echo ""
-            echo "=== MLC LLM dev shell (Orin AGX / CUDA 12.6) ==="
+            echo "=== MLC LLM dev shell (Orin AGX — Docker) ==="
             echo ""
 
-            # Setup Python venv for pip-installed packages
-            VENV_DIR="$PWD/.venv"
-            if [ ! -d "$VENV_DIR" ]; then
-              echo "Creating Python venv in .venv/ ..."
-              python3 -m venv "$VENV_DIR" --system-site-packages
-              source "$VENV_DIR/bin/activate"
-              echo "Installing MLC LLM..."
-              # MLC LLM pre-built wheels for aarch64 + CUDA
-              pip install --upgrade pip
-              pip install mlc-llm mlc-ai-nightly 2>/dev/null || {
-                echo ""
-                echo "NOTE: Pre-built wheel not available. Installing from source..."
-                echo "  pip install mlc-ai-nightly -f https://mlc.ai/wheels"
-                echo ""
-                pip install mlc-ai-nightly -f https://mlc.ai/wheels || {
-                  echo "WARNING: MLC LLM installation failed."
-                  echo "Try manually: pip install mlc-ai-nightly -f https://mlc.ai/wheels"
-                }
-              }
+            # Pre-flight: verify docker daemon
+            if ! command -v docker &>/dev/null; then
+              echo "WARNING: 'docker' not in PATH."
+              echo "Enable Docker in NixOS config first:"
+              echo "  sudo nixos-rebuild switch --flake ../nixos#nixos-docker-bench"
+              echo ""
+            elif ! docker info &>/dev/null 2>&1; then
+              echo "WARNING: Docker daemon not running or permission denied."
+              echo "  sudo systemctl start docker"
+              echo ""
             else
-              source "$VENV_DIR/bin/activate"
+              echo "Docker: $(docker --version)"
+              echo ""
             fi
 
+            echo "Usage:"
+            echo "  ./run-mlc-docker.sh                         # LLaMA 3.2 1B q4f16 (default)"
+            echo "  ./run-mlc-docker.sh <model-spec>            # custom MLC model"
+            echo "  python3 bench_mlc_llm.py                    # after container is up"
             echo ""
-            echo "Quick test:"
-            echo "  python3 -c 'import mlc_llm; print(mlc_llm.__version__)'"
-            echo ""
-            echo "Run inference:"
-            echo "  mlc_llm chat HF://mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC"
-            echo ""
-            echo "Benchmark (decode throughput):"
-            echo "  python3 bench_mlc_llm.py"
+            echo "Docker images tried (in order):"
+            echo "  1. mlc-jetson:latest         (local build from Dockerfile.jetson)"
+            echo "  2. dustynv/mlc:r36.4.0       (dustynv's JetPack 6 pre-built)"
             echo ""
           '';
         };

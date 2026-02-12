@@ -28,16 +28,22 @@ def benchmark_vllm(server_url, model, num_tokens=25, prompt="Hello, how are you 
     print(f"Max tokens: {num_tokens}")
     print(f"{'='*70}\n")
 
-    # Check server health
+    # Check server health (try /health, fall back to /v1/models)
     try:
         resp = requests.get(f"{server_url}/health", timeout=5)
-        if resp.status_code != 200:
-            print(f"ERROR: Server not healthy (status {resp.status_code})")
-            sys.exit(1)
-        print("Server is healthy ✓\n")
+        if resp.status_code == 200:
+            print("Server is healthy ✓\n")
+        else:
+            # Try /v1/models as fallback (MLC LLM doesn't have /health)
+            resp2 = requests.get(f"{server_url}/v1/models", timeout=5)
+            if resp2.status_code == 200:
+                print("Server is ready ✓\n")
+            else:
+                print(f"ERROR: Server not healthy (status {resp.status_code})")
+                sys.exit(1)
     except requests.exceptions.ConnectionError:
         print(f"ERROR: Cannot connect to {server_url}")
-        print("Start vLLM first: ./run-vllm-docker.sh")
+        print("Start the server first: ./run-vllm-docker.sh or ./run-mlc-docker.sh")
         sys.exit(1)
 
     # Warmup

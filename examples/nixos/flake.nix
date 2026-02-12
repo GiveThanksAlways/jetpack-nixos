@@ -115,5 +115,26 @@
           })
         ];
       };
+
+      # -- Docker benchmarking (Docker + NVIDIA Container Toolkit) --
+      # Enables Docker with GPU passthrough for running vLLM, MLC LLM,
+      # and other containerized inference engines.
+      #
+      #   sudo nixos-rebuild switch --flake .#nixos-docker-bench
+      #   docker run --runtime nvidia -e NVIDIA_VISIBLE_DEVICES=all ubuntu nvidia-smi
+      #
+      nixosConfigurations.nixos-docker-bench = nixpkgs.lib.nixosSystem {
+        modules = baseModules ++ [
+          ./modules/performance.nix
+          ./modules/docker-nvidia.nix
+          ({ ... }: {
+            services.orin-perf.enable = true;
+            services.docker-nvidia = {
+              enable = true;
+              users = [ "agent" "spencer" ];
+            };
+          })
+        ];
+      };
     };
 }
