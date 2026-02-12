@@ -1,0 +1,8 @@
+ggml_cuda_init: found 1 CUDA devices:
+  Device 0: Orin, compute capability 8.7, VMM: yes
+| model                          |       size |     params | backend    | ngl |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | --------------: | -------------------: |
+| llama 1B Q6_K                  | 967.00 MiB |     1.24 B | CUDA       | 999 |           pp512 |       1090.46 ± 0.35 |
+| llama 1B Q6_K                  | 967.00 MiB |     1.24 B | CUDA       | 999 |           tg128 |         25.61 ± 0.01 |
+
+build: unknown (0)

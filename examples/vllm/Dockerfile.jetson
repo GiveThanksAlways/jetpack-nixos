@@ -1,0 +1,18 @@
+# vLLM Jetson Orin AGX Docker Image
+# Based on dustynv's JetPack 6 containers for best Jetson compatibility
+#
+# Build: docker build -t vllm-jetson:latest -f Dockerfile.jetson .
+# Run:   ./run-vllm-docker.sh
+
+FROM dustynv/l4t-pytorch:r36.4.0 AS base
+
+# Install vLLM
+RUN pip3 install --no-cache-dir vllm || \
+    pip3 install --no-cache-dir vllm --pre
+
+# Expose OpenAI-compatible API port
+EXPOSE 8000
+
+# Default entrypoint: vLLM OpenAI server
+ENTRYPOINT ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+CMD ["--model", "meta-llama/Llama-3.2-1B-Instruct", "--max-model-len", "2048", "--dtype", "half"]

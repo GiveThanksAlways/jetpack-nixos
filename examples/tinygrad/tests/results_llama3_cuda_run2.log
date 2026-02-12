@@ -1,0 +1,78 @@
+  0%|                                                   | 0/148 [00:00<?, ?it/s]ram used:  1.02 GB, layers.0.attention.wq.weight                      :   1%| | ram used:  1.04 GB, layers.0.attention.wk.weight                      :   1%| | ram used:  1.04 GB, layers.0.attention.wv.weight                      :   2%| | ram used:  1.05 GB, layers.0.attention.wo.weight                      :   3%| | ram used:  1.06 GB, layers.0.feed_forward.w1.weight                   :   3%| | ram used:  1.13 GB, layers.0.feed_forward.w2.weight                   :   4%| | ram used:  1.20 GB, layers.0.feed_forward.w3.weight                   :   5%| | ram used:  1.27 GB, layers.0.attention_norm.weight                    :   5%| | ram used:  1.27 GB, layers.0.ffn_norm.weight                          :   6%| | ram used:  1.27 GB, layers.1.attention.wq.weight                      :   7%| | ram used:  1.28 GB, layers.1.attention.wk.weight                      :   7%| | ram used:  1.29 GB, layers.1.attention.wv.weight                      :   8%| | ram used:  1.29 GB, layers.1.attention.wo.weight                      :   9%| | ram used:  1.31 GB, layers.1.feed_forward.w1.weight                   :   9%| | ram used:  1.37 GB, layers.1.feed_forward.w2.weight                   :  10%| | ram used:  1.44 GB, layers.1.feed_forward.w3.weight                   :  11%| | ram used:  1.51 GB, layers.1.attention_norm.weight                    :  11%| | ram used:  1.51 GB, layers.1.ffn_norm.weight                          :  12%| | ram used:  1.51 GB, layers.2.attention.wq.weight                      :  13%|▏| ram used:  1.53 GB, layers.2.attention.wk.weight                      :  14%|▏| ram used:  1.53 GB, layers.2.attention.wv.weight                      :  14%|▏| ram used:  1.53 GB, layers.2.attention.wo.weight                      :  15%|▏| ram used:  1.55 GB, layers.2.feed_forward.w1.weight                   :  16%|▏| ram used:  1.62 GB, layers.2.feed_forward.w2.weight                   :  16%|▏| ram used:  1.68 GB, layers.2.feed_forward.w3.weight                   :  17%|▏| ram used:  1.75 GB, layers.2.attention_norm.weight                    :  18%|▏| ram used:  1.75 GB, layers.2.ffn_norm.weight                          :  18%|▏| ram used:  1.75 GB, layers.3.attention.wq.weight                      :  19%|▏| ram used:  1.77 GB, layers.3.attention.wk.weight                      :  20%|▏| ram used:  1.77 GB, layers.3.attention.wv.weight                      :  20%|▏| ram used:  1.78 GB, layers.3.attention.wo.weight                      :  21%|▏| ram used:  1.79 GB, layers.3.feed_forward.w1.weight                   :  22%|▏| ram used:  1.86 GB, layers.3.feed_forward.w2.weight                   :  22%|▏| ram used:  1.93 GB, layers.3.feed_forward.w3.weight                   :  23%|▏| ram used:  1.99 GB, layers.3.attention_norm.weight                    :  24%|▏| ram used:  1.99 GB, layers.3.ffn_norm.weight                          :  24%|▏| ram used:  1.99 GB, layers.4.attention.wq.weight                      :  25%|▎| ram used:  2.01 GB, layers.4.attention.wk.weight                      :  26%|▎| ram used:  2.02 GB, layers.4.attention.wv.weight                      :  26%|▎| ram used:  2.02 GB, layers.4.attention.wo.weight                      :  27%|▎| ram used:  2.04 GB, layers.4.feed_forward.w1.weight                   :  28%|▎| ram used:  2.10 GB, layers.4.feed_forward.w2.weight                   :  28%|▎| ram used:  2.17 GB, layers.4.feed_forward.w3.weight                   :  29%|▎| ram used:  2.24 GB, layers.4.attention_norm.weight                    :  30%|▎| ram used:  2.24 GB, layers.4.ffn_norm.weight                          :  30%|▎| ram used:  2.24 GB, layers.5.attention.wq.weight                      :  31%|▎| ram used:  2.26 GB, layers.5.attention.wk.weight                      :  32%|▎| ram used:  2.26 GB, layers.5.attention.wv.weight                      :  32%|▎| ram used:  2.26 GB, layers.5.attention.wo.weight                      :  33%|▎| ram used:  2.28 GB, layers.5.feed_forward.w1.weight                   :  34%|▎| ram used:  2.35 GB, layers.5.feed_forward.w2.weight                   :  34%|▎| ram used:  2.41 GB, layers.5.feed_forward.w3.weight                   :  35%|▎| ram used:  2.48 GB, layers.5.attention_norm.weight                    :  36%|▎| ram used:  2.48 GB, layers.5.ffn_norm.weight                          :  36%|▎| ram used:  2.48 GB, layers.6.attention.wq.weight                      :  37%|▎| ram used:  2.50 GB, layers.6.attention.wk.weight                      :  38%|▍| ram used:  2.50 GB, layers.6.attention.wv.weight                      :  39%|▍| ram used:  2.51 GB, layers.6.attention.wo.weight                      :  39%|▍| ram used:  2.52 GB, layers.6.feed_forward.w1.weight                   :  40%|▍| ram used:  2.59 GB, layers.6.feed_forward.w2.weight                   :  41%|▍| ram used:  2.66 GB, layers.6.feed_forward.w3.weight                   :  41%|▍| ram used:  2.72 GB, layers.6.attention_norm.weight                    :  42%|▍| ram used:  2.72 GB, layers.6.ffn_norm.weight                          :  43%|▍| ram used:  2.72 GB, layers.7.attention.wq.weight                      :  43%|▍| ram used:  2.74 GB, layers.7.attention.wk.weight                      :  44%|▍| ram used:  2.75 GB, layers.7.attention.wv.weight                      :  45%|▍| ram used:  2.75 GB, layers.7.attention.wo.weight                      :  45%|▍| ram used:  2.77 GB, layers.7.feed_forward.w1.weight                   :  46%|▍| ram used:  2.83 GB, layers.7.feed_forward.w2.weight                   :  47%|▍| ram used:  2.90 GB, layers.7.feed_forward.w3.weight                   :  47%|▍| ram used:  2.97 GB, layers.7.attention_norm.weight                    :  48%|▍| ram used:  2.97 GB, layers.7.ffn_norm.weight                          :  49%|▍| ram used:  2.97 GB, layers.8.attention.wq.weight                      :  49%|▍| ram used:  2.98 GB, layers.8.attention.wk.weight                      :  50%|▌| ram used:  2.99 GB, layers.8.attention.wv.weight                      :  51%|▌| ram used:  2.99 GB, layers.8.attention.wo.weight                      :  51%|▌| ram used:  3.01 GB, layers.8.feed_forward.w1.weight                   :  52%|▌| ram used:  3.08 GB, layers.8.feed_forward.w2.weight                   :  53%|▌| ram used:  3.14 GB, layers.8.feed_forward.w3.weight                   :  53%|▌| ram used:  3.21 GB, layers.8.attention_norm.weight                    :  54%|▌| ram used:  3.21 GB, layers.8.ffn_norm.weight                          :  55%|▌| ram used:  3.21 GB, layers.9.attention.wq.weight                      :  55%|▌| ram used:  3.23 GB, layers.9.attention.wk.weight                      :  56%|▌| ram used:  3.23 GB, layers.9.attention.wv.weight                      :  57%|▌| ram used:  3.24 GB, layers.9.attention.wo.weight                      :  57%|▌| ram used:  3.25 GB, layers.9.feed_forward.w1.weight                   :  58%|▌| ram used:  3.32 GB, layers.9.feed_forward.w2.weight                   :  59%|▌| ram used:  3.39 GB, layers.9.feed_forward.w3.weight                   :  59%|▌| ram used:  3.45 GB, layers.9.attention_norm.weight                    :  60%|▌| ram used:  3.45 GB, layers.9.ffn_norm.weight                          :  61%|▌| ram used:  3.45 GB, layers.10.attention.wq.weight                     :  61%|▌| ram used:  3.47 GB, layers.10.attention.wk.weight                     :  62%|▌| ram used:  3.48 GB, layers.10.attention.wv.weight                     :  63%|▋| ram used:  3.48 GB, layers.10.attention.wo.weight                     :  64%|▋| ram used:  3.50 GB, layers.10.feed_forward.w1.weight                  :  64%|▋| ram used:  3.56 GB, layers.10.feed_forward.w2.weight                  :  65%|▋| ram used:  3.63 GB, layers.10.feed_forward.w3.weight                  :  66%|▋| ram used:  3.70 GB, layers.10.attention_norm.weight                   :  66%|▋| ram used:  3.70 GB, layers.10.ffn_norm.weight                         :  67%|▋| ram used:  3.70 GB, layers.11.attention.wq.weight                     :  68%|▋| ram used:  3.71 GB, layers.11.attention.wk.weight                     :  68%|▋| ram used:  3.72 GB, layers.11.attention.wv.weight                     :  69%|▋| ram used:  3.72 GB, layers.11.attention.wo.weight                     :  70%|▋| ram used:  3.74 GB, layers.11.feed_forward.w1.weight                  :  70%|▋| ram used:  3.81 GB, layers.11.feed_forward.w2.weight                  :  71%|▋| ram used:  3.87 GB, layers.11.feed_forward.w3.weight                  :  72%|▋| ram used:  3.94 GB, layers.11.attention_norm.weight                   :  72%|▋| ram used:  3.94 GB, layers.11.ffn_norm.weight                         :  73%|▋| ram used:  3.94 GB, layers.12.attention.wq.weight                     :  74%|▋| ram used:  3.96 GB, layers.12.attention.wk.weight                     :  74%|▋| ram used:  3.96 GB, layers.12.attention.wv.weight                     :  75%|▊| ram used:  3.97 GB, layers.12.attention.wo.weight                     :  76%|▊| ram used:  3.98 GB, layers.12.feed_forward.w1.weight                  :  76%|▊| ram used:  4.05 GB, layers.12.feed_forward.w2.weight                  :  77%|▊| ram used:  4.12 GB, layers.12.feed_forward.w3.weight                  :  78%|▊| ram used:  4.18 GB, layers.12.attention_norm.weight                   :  78%|▊| ram used:  4.18 GB, layers.12.ffn_norm.weight                         :  79%|▊| ram used:  4.18 GB, layers.13.attention.wq.weight                     :  80%|▊| ram used:  4.20 GB, layers.13.attention.wk.weight                     :  80%|▊| ram used:  4.21 GB, layers.13.attention.wv.weight                     :  81%|▊| ram used:  4.21 GB, layers.13.attention.wo.weight                     :  82%|▊| ram used:  4.23 GB, layers.13.feed_forward.w1.weight                  :  82%|▊| ram used:  4.29 GB, layers.13.feed_forward.w2.weight                  :  83%|▊| ram used:  4.36 GB, layers.13.feed_forward.w3.weight                  :  84%|▊| ram used:  4.43 GB, layers.13.attention_norm.weight                   :  84%|▊| ram used:  4.43 GB, layers.13.ffn_norm.weight                         :  85%|▊| ram used:  4.43 GB, layers.14.attention.wq.weight                     :  86%|▊| ram used:  4.44 GB, layers.14.attention.wk.weight                     :  86%|▊| ram used:  4.45 GB, layers.14.attention.wv.weight                     :  87%|▊| ram used:  4.45 GB, layers.14.attention.wo.weight                     :  88%|▉| ram used:  4.47 GB, layers.14.feed_forward.w1.weight                  :  89%|▉| ram used:  4.54 GB, layers.14.feed_forward.w2.weight                  :  89%|▉| ram used:  4.60 GB, layers.14.feed_forward.w3.weight                  :  90%|▉| ram used:  4.67 GB, layers.14.attention_norm.weight                   :  91%|▉| ram used:  4.67 GB, layers.14.ffn_norm.weight                         :  91%|▉| ram used:  4.67 GB, layers.15.attention.wq.weight                     :  92%|▉| ram used:  4.69 GB, layers.15.attention.wk.weight                     :  93%|▉| ram used:  4.69 GB, layers.15.attention.wv.weight                     :  93%|▉| ram used:  4.70 GB, layers.15.attention.wo.weight                     :  94%|▉| ram used:  4.71 GB, layers.15.feed_forward.w1.weight                  :  95%|▉| ram used:  4.78 GB, layers.15.feed_forward.w2.weight                  :  95%|▉| ram used:  4.85 GB, layers.15.feed_forward.w3.weight                  :  96%|▉| ram used:  4.91 GB, layers.15.attention_norm.weight                   :  97%|▉| ram used:  4.91 GB, layers.15.ffn_norm.weight                         :  97%|▉| ram used:  4.91 GB, norm.weight                                       :  98%|▉| ram used:  4.91 GB, tok_embeddings.weight                             :  99%|▉| ram used:  5.97 GB, output.weight                                     :  99%|▉| ram used:  5.97 GB, freqs_cis                                         : 100%|█| ram used:  5.97 GB, freqs_cis                                         : 100%|█| 
+  0%|                                                    | 0/11 [00:00<?, ?it/s]  9%|████                                        | 1/11 [00:03<00:30,  0.33it/s] 18%|████████                                    | 2/11 [00:05<00:25,  0.36it/s] 27%|████████████                                | 3/11 [00:07<00:19,  0.41it/s] 36%|████████████████                            | 4/11 [00:07<00:13,  0.53it/s] 45%|████████████████████                        | 5/11 [00:07<00:08,  0.67it/s] 55%|████████████████████████                    | 6/11 [00:07<00:06,  0.80it/s] 64%|████████████████████████████                | 7/11 [00:07<00:04,  0.93it/s] 73%|████████████████████████████████            | 8/11 [00:07<00:02,  1.06it/s] 82%|████████████████████████████████████        | 9/11 [00:07<00:01,  1.20it/s] 91%|███████████████████████████████████████    | 10/11 [00:07<00:00,  1.33it/s]100%|███████████████████████████████████████████| 11/11 [00:07<00:00,  1.46it/s]100%|███████████████████████████████████████████| 11/11 [00:07<00:00,  1.46it/s]
+seed = 42
+loaded weights in 20973.44 ms, 4.94 GB loaded at 0.24 GB/s
+enqueue in   5.82 ms
+total 2643.78 ms, 0.38 tok/s, 3.36 GB/s, param 2.27 GB/s
+Hello
+enqueue in   5.84 ms
+total 302.61 ms, 3.30 tok/s, 29.32 GB/s, param 19.82 GB/s
+Hello!
+enqueue in   5.42 ms
+total 305.59 ms, 3.27 tok/s, 29.03 GB/s, param 19.63 GB/s
+Hello! How
+enqueue in   5.44 ms
+total 302.39 ms, 3.31 tok/s, 29.34 GB/s, param 19.84 GB/s
+Hello! How can
+enqueue in   9.74 ms
+total 302.19 ms, 3.31 tok/s, 29.36 GB/s, param 19.85 GB/s
+Hello! How can I
+enqueue in   5.43 ms
+total 302.38 ms, 3.31 tok/s, 29.34 GB/s, param 19.84 GB/s
+Hello! How can I assist
+enqueue in   5.64 ms
+total 302.52 ms, 3.31 tok/s, 29.33 GB/s, param 19.83 GB/s
+Hello! How can I assist you
+enqueue in   5.96 ms
+total 302.43 ms, 3.31 tok/s, 29.34 GB/s, param 19.83 GB/s
+Hello! How can I assist you today
+enqueue in   5.47 ms
+total 302.65 ms, 3.30 tok/s, 29.31 GB/s, param 19.82 GB/s
+Hello! How can I assist you today?
+enqueue in   5.26 ms
+total 302.41 ms, 3.31 tok/s, 29.34 GB/s, param 19.83 GB/s
+Hello! How can I assist you today?
+enqueue in   5.32 ms
+total 303.25 ms, 3.30 tok/s, 29.26 GB/s, param 19.78 GB/s
+Hello! How can I assist you today?
+enqueue in   5.43 ms
+total 302.69 ms, 3.30 tok/s, 29.31 GB/s, param 19.82 GB/s
+Hello! How can I assist you today?assistant
+enqueue in   5.25 ms
+total 302.45 ms, 3.31 tok/s, 29.33 GB/s, param 19.83 GB/s
+Hello! How can I assist you today?assistant
+enqueue in   6.74 ms
+total 303.51 ms, 3.29 tok/s, 29.23 GB/s, param 19.76 GB/s
+Hello! How can I assist you today?assistant
+
+
+enqueue in   5.60 ms
+total 302.85 ms, 3.30 tok/s, 29.30 GB/s, param 19.81 GB/s
+Hello! How can I assist you today?assistant
+
+I
+enqueue in   5.56 ms
+total 302.80 ms, 3.30 tok/s, 29.30 GB/s, param 19.81 GB/s
+Hello! How can I assist you today?assistant
+
+I can
+enqueue in   5.22 ms
+total 302.58 ms, 3.30 tok/s, 29.32 GB/s, param 19.82 GB/s
+Hello! How can I assist you today?assistant
+
+I can provide
+enqueue in   5.60 ms
+total 302.78 ms, 3.30 tok/s, 29.30 GB/s, param 19.81 GB/s
+Hello! How can I assist you today?assistant
+
+I can provide information
+enqueue in   5.61 ms
+total 305.96 ms, 3.27 tok/s, 29.00 GB/s, param 19.60 GB/s
+Hello! How can I assist you today?assistant
+
+I can provide information and
+enqueue in   5.60 ms
+total 302.92 ms, 3.30 tok/s, 29.29 GB/s, param 19.80 GB/s
+Hello! How can I assist you today?assistant
+
+I can provide information and entertainment

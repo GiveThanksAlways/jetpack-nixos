@@ -1,0 +1,181 @@
+{
+  "backend": "NV",
+  "timestamp": "2026-02-11 05:28:04",
+  "device": "Jetson Orin AGX 64GB",
+  "matmul": [
+    {
+      "size": 256,
+      "dtype": "dtypes.float",
+      "gflops": 11.9,
+      "median_ms": 2.8237229998921975,
+      "mean_ms": 2.825493699638173,
+      "min_ms": 2.760297000349965,
+      "p99_ms": 2.8961719981452916,
+      "iters": 50
+    },
+    {
+      "size": 512,
+      "dtype": "dtypes.float",
+      "gflops": 40.0,
+      "median_ms": 6.705637999402825,
+      "mean_ms": 6.734611480060266,
+      "min_ms": 6.453537000197684,
+      "p99_ms": 7.007497999438783,
+      "iters": 50
+    },
+    {
+      "size": 1024,
+      "dtype": "dtypes.float",
+      "gflops": 118.4,
+      "median_ms": 18.13800300078583,
+      "mean_ms": 19.621001860141405,
+      "min_ms": 18.019569000898628,
+      "p99_ms": 33.920482001121854,
+      "iters": 50
+    },
+    {
+      "size": 2048,
+      "dtype": "dtypes.float",
+      "gflops": 136.1,
+      "median_ms": 126.26914300199132,
+      "mean_ms": 126.36729199930414,
+      "min_ms": 126.12619600258768,
+      "p99_ms": 126.72998199923313,
+      "iters": 20
+    },
+    {
+      "size": 4096,
+      "dtype": "dtypes.float",
+      "gflops": 138.6,
+      "median_ms": 991.9574799969268,
+      "mean_ms": 991.9731793994288,
+      "min_ms": 991.7167050007265,
+      "p99_ms": 992.3251010004606,
+      "iters": 20
+    },
+    {
+      "size": 1024,
+      "dtype": "dtypes.half",
+      "gflops": 387.5,
+      "median_ms": 5.541587001061998,
+      "mean_ms": 5.510779180040117,
+      "min_ms": 5.372079998778645,
+      "p99_ms": 5.691446000128053,
+      "iters": 50
+    },
+    {
+      "size": 2048,
+      "dtype": "dtypes.half",
+      "gflops": 932.3,
+      "median_ms": 18.42725299866288,
+      "mean_ms": 17.185344599784003,
+      "min_ms": 13.586124001449207,
+      "p99_ms": 24.335469999641646,
+      "iters": 20
+    },
+    {
+      "size": 4096,
+      "dtype": "dtypes.half",
+      "gflops": 1552.5,
+      "median_ms": 88.52574599950458,
+      "mean_ms": 88.50234974997875,
+      "min_ms": 88.15290799975628,
+      "p99_ms": 89.19506700112834,
+      "iters": 20
+    }
+  ],
+  "bandwidth": [
+    {
+      "size_mb": 1,
+      "copyin_gb_s": 0.51,
+      "copyin_ms": 2.047,
+      "copyout_gb_s": 4.46,
+      "copyout_ms": 0.235,
+      "d2d_gb_s": 0.58,
+      "d2d_ms": 1.809,
+      "alloc_ms": 1.925
+    },
+    {
+      "size_mb": 16,
+      "copyin_gb_s": 3.31,
+      "copyin_ms": 5.073,
+      "copyout_gb_s": 6.35,
+      "copyout_ms": 2.644,
+      "d2d_gb_s": 6.86,
+      "d2d_ms": 2.447,
+      "alloc_ms": 2.258
+    },
+    {
+      "size_mb": 256,
+      "copyin_gb_s": 5.18,
+      "copyin_ms": 51.827,
+      "copyout_gb_s": 1.48,
+      "copyout_ms": 181.841,
+      "d2d_gb_s": 18.58,
+      "d2d_ms": 14.448,
+      "alloc_ms": 8.322
+    }
+  ],
+  "kernel_launch": {
+    "trivial_median_us": 1143.4,
+    "trivial_p99_us": 1195.5,
+    "trivial_min_us": 1120.8
+  },
+  "elementwise": [
+    {
+      "op": "add",
+      "elements": 1000000,
+      "gb_s": 5.13,
+      "median_ms": 1.56
+    },
+    {
+      "op": "mul",
+      "elements": 1000000,
+      "gb_s": 5.11,
+      "median_ms": 1.564
+    },
+    {
+      "op": "exp",
+      "elements": 1000000,
+      "gb_s": 4.28,
+      "median_ms": 1.871
+    },
+    {
+      "op": "relu",
+      "elements": 1000000,
+      "gb_s": 3.33,
+      "median_ms": 2.405
+    },
+    {
+      "op": "add",
+      "elements": 10000000,
+      "gb_s": 21.99,
+      "median_ms": 3.638
+    },
+    {
+      "op": "mul",
+      "elements": 10000000,
+      "gb_s": 22.04,
+      "median_ms": 3.63
+    },
+    {
+      "op": "exp",
+      "elements": 10000000,
+      "gb_s": 19.71,
+      "median_ms": 4.058
+    },
+    {
+      "op": "relu",
+      "elements": 10000000,
+      "gb_s": 17.82,
+      "median_ms": 4.49
+    }
+  ],
+  "model_inference": {
+    "model": "MLP-784-256-128-10",
+    "batch_size": 64,
+    "median_ms": 10.188,
+    "p99_ms": 10.549,
+    "throughput_samples_per_sec": 6282.0
+  }
+}
