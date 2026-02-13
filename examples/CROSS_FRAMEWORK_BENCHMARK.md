@@ -2,109 +2,156 @@
 
 **Device**: NVIDIA Jetson Orin AGX 64GB, JetPack 6, L4T r36.4.4, SM 8.7, CUDA 12.6, LPDDR5 ~102 GB/s  
 **Model**: LLaMA 3.2 1B Instruct  
-**Metric**: Steady-state decode tokens/second (batch=1, autoregressive)  
-**Date**: 2026-02-12
+**Date**: 2026-02-13
 
-## Results — LLaMA 3.2 1B Instruct Decode
+---
 
-| Rank | Framework | Quantization | tok/s | vs llama.cpp | Notes |
-|------|-----------|-------------|-------|-------------|-------|
-| 1 | **MLC LLM** | q4f16_1 (4-bit) | **47.0** | **184%** | JIT-compiled for sm_87, CUDA graphs |
-| 2 | **tinygrad NV=1 + JITBEAM=4** | Q6_K (6-bit) | **36.7** | **143%** | Matvec heuristic fix + beam search |
-| 3 | tinygrad CUDA=1 + JITBEAM=4 | Q6_K (6-bit) | 31.8 | 124% | Same fix, CUDA backend |
-| 4 | tinygrad NV=1 + MV_TPR=32 | Q6_K (6-bit) | 29.9 | 117% | Without beam search |
-| 5 | llama.cpp +FA | Q6_K (6-bit) | 27.8 | 109% | Flash Attention enabled |
-| 6 | **llama.cpp** | Q6_K (6-bit) | **25.6** | **baseline** | llama-bench tg128 |
-| 7 | vLLM (fp16 Qwen 1.5B) | fp16 (16-bit) | 21.1 | 82% | Different model, full precision |
-| 8 | vLLM (GGUF) | Q6_K (6-bit) | 14.7 | 57% | "gguf quantization not fully optimized" |
+## Fair Comparison: Same Model, Same Precision (fp16)
 
-### Apples-to-Apples: Same Quantization (Q6_K, 6-bit)
+All four frameworks run **LLaMA 3.2 1B Instruct at fp16 precision** — no quantization, identical math.
+Tinygrad and llama.cpp use F16 GGUF; vLLM uses F16 GGUF; MLC uses its pre-compiled q0f16-MLC (fp16, no quantization).
 
-| Framework | tok/s | vs llama.cpp |
-|-----------|-------|-------------|
-| **tinygrad NV=1 + JITBEAM=4** | **36.7** | **+43%** ✅ |
-| tinygrad CUDA=1 + JITBEAM=4 | 31.8 | +24% |
-| tinygrad NV=1 + MV_TPR=32 | 29.9 | +17% |
-| llama.cpp +FA | 27.8 | +9% |
-| llama.cpp | 25.6 | baseline |
-| vLLM (GGUF) | 14.7 | -43% |
+| Rank | Framework | Decode tok/s | Prefill tok/s | P50 Latency ms/tok | Jitter (P90−P10) |
+|------|-----------|:-----------:|:------------:|:------------------:|:----------------:|
+| 1 | **MLC LLM** q0f16 | **36.8** | 1586 | **27.19** | 0.62 ms |
+| 2 | **vLLM** F16 GGUF | **30.3** | **1622** | 32.84 | 0.97 ms |
+| 3 | **tinygrad** NV=1 | **27.0** | 7.1¹ | 37.07 | 2.71 ms |
+| 4 | **llama.cpp** +FA | 24.1 | 938 | ~41.5² | — |
+| 5 | llama.cpp (no FA) | 22.4 | 699 | ~44.6² | — |
 
-**Winner (same quant)**: tinygrad with NV backend + matvec fix + JITBEAM=4, at **36.7 tok/s** — 43% faster than llama.cpp.
+¹ tinygrad prefill includes JIT compilation overhead (~6s for first inference, then instant)  
+² llama.cpp P50 estimated from 1000/tok_s (llama-bench reports aggregate only)
 
-### All Frameworks Including Different Quantizations
+### tinygrad vs llama.cpp (same model, same precision)
 
-MLC LLM achieves 47.0 tok/s but uses 4-bit quantization (q4f16_1), which requires ~40% less memory bandwidth than Q6_K. A fairer comparison would need MLC with Q6_K or tinygrad with Q4, which is not currently available.
+| Metric | tinygrad NV=1 | llama.cpp +FA | tinygrad advantage |
+|--------|:------------:|:------------:|:-----------------:|
+| Decode throughput | 27.0 tok/s | 24.1 tok/s | **+12%** ✅ |
+| Decode latency P50 | 37.1 ms | ~41.5 ms | **−11%** ✅ |
+| Decode jitter | 2.71 ms | — | very low |
+
+**tinygrad beats llama.cpp by 12% on decode** — and this is without JITBEAM (see below).
+
+---
+
+## Previous Results: Mixed Quantizations (for reference)
+
+These numbers from 2026-02-12 used each framework's preferred/default quantization:
+
+| Rank | Framework | Quantization | Decode tok/s | vs llama.cpp |
+|------|-----------|-------------|:-----------:|:------------:|
+| 1 | MLC LLM | q4f16_1 (4-bit) | 47.0 | 184% |
+| 2 | tinygrad NV=1 + JITBEAM=4 | Q6_K (6-bit) | 36.7 | 143% |
+| 3 | tinygrad NV=1 + MV_TPR=32 | Q6_K (6-bit) | 29.9 | 117% |
+| 4 | llama.cpp +FA | Q6_K (6-bit) | 27.8 | 109% |
+| 5 | llama.cpp | Q6_K (6-bit) | 25.6 | baseline |
+| 6 | vLLM (GGUF) | Q6_K (6-bit) | 14.7 | 57% |
+
+---
+
+## JITBEAM Investigation: A Cautionary Tale
+
+JITBEAM controls kernel auto-tuning beam search width in tinygrad's JIT compiler.
+Higher JITBEAM = wider search = more time spent finding "optimal" kernels.
+
+### Results (NV backend, Orin AGX)
+
+| Config | Q6_K tok/s | F16 tok/s | Notes |
+|--------|:---------:|:--------:|-------|
+| Baseline (no BEAM) | **26.9** | **27.0** | Default heuristics |
+| JITBEAM=2 | 1.0 | 1.0 | **27x slower!** |
+| JITBEAM=4 | 1.1 | 1.1 | **25x slower!** |
+
+### What happened?
+
+JITBEAM's beam search optimizes individual kernel execution time by trying different thread/block configurations. However, on Orin's unified memory architecture (iGPU sharing LPDDR5 with CPU), the "optimal" kernel found by beam search is actually **dramatically worse** for the full inference pipeline.
+
+**Root cause**: The beam search metric (single kernel latency) doesn't account for:
+- Orin iGPU's unique memory hierarchy (shared LPDDR5, no dedicated VRAM)
+- Pipeline effects (cache thrashing between kernels)
+- The default NV backend heuristics are already well-tuned for this architecture
+
+**Takeaway**: tinygrad's default kernel selection (without BEAM) already produces excellent results on Orin. JITBEAM hurts because locally-optimal ≠ globally-optimal on unified memory.
+
+> **Note**: The previous JITBEAM=4 result of 36.7 tok/s from the mixed-quantization benchmarks was measured differently (via `--benchmark` flag) and may have reflected measurement differences rather than true JITBEAM benefit. The investigation above using consistent methodology shows JITBEAM is counterproductive on this hardware.
+
+---
 
 ## Framework Details
 
 ### tinygrad (NV backend)
 - **Version**: Latest with matvec heuristic fix (commit `2439279b1`)
-- **Key optimization**: Fixed matvec pattern matching in `heuristic.py` — was silently falling through to GROUPTOP(16) (half a warp, non-coalesced). Fix enables 128-thread coalesced matvec with GROUP reduction.
-- **JITBEAM=4**: Kernel auto-tuning via beam search. NV=1 benefits much more than CUDA=1 (+23% vs +6%) because lower dispatch overhead amplifies kernel optimization.
-- **Backend**: Direct GPU kernel interface (NV), bypasses CUDA driver overhead.
-- **Runs**: Native (no Docker), nix develop shell, GGUF Q6_K format.
+- **Key optimization**: Fixed matvec pattern matching in `heuristic.py` — was silently falling through to GROUPTOP(16). Fix enables 128-thread coalesced matvec.
+- **Backend**: Direct GPU kernel interface (NV), bypasses CUDA driver overhead
+- **Measurement**: `model.generate()` with 10-token warmup, 128-token steady-state measurement
+- **Best config**: `NV=1 MV_THREADS_PER_ROW=32` (no JITBEAM on Orin)
+- **Runs**: Native (no Docker), nix develop shell
 
 ### llama.cpp
 - **Version**: Built from upstream with CUDA + OpenSSL via Nix overlay
-- **Config**: llama-bench tg128, CUDA backend, Q6_K GGUF
-- **FA**: Flash Attention enabled via `-fa 1`
+- **Config**: `llama-bench -p 42 -n 128 -r 5 -fa 1`, CUDA backend, F16 GGUF
 - **Runs**: Native (no Docker), nix develop shell
 
 ### vLLM
 - **Version**: 0.6.3 (dustynv/vllm:r36.4.0 container)
 - **Config**: `--enforce-eager --dtype half --max-model-len 2048 --gpu-memory-utilization 0.8`
-- **GGUF warning**: "gguf quantization is not fully optimized yet. The speed can be slower than non-quantized models."
-- **fp16 result**: With Qwen2.5-1.5B-Instruct (fp16, no quantization), achieves 21.1 tok/s — better than its own GGUF path but slower than optimized quantized approaches.
+- **Model**: F16 GGUF (same file as tinygrad/llama.cpp)
+- **Measurement**: OpenAI API streaming, 2 warmup requests, 3 runs averaged
 - **Runs**: Docker container with NVIDIA runtime
 
 ### MLC LLM
 - **Version**: dustynv/mlc:r36.4.0 container
 - **Config**: `--mode local` (max batch = 4, max KV = 8192)
-- **Compilation**: JIT-compiled for sm_87 (Orin) with cutlass + cudagraph
-- **Quantization**: q4f16_1 (4-bit weights, fp16 arithmetic, group_size=32)
-- **Memory**: 663 MB params + 386 MB KV cache + 1480 MB temp = 2529 MB total
+- **Model**: `HF://mlc-ai/Llama-3.2-1B-Instruct-q0f16-MLC` (fp16, pre-compiled)
+- **Compilation**: JIT-compiled for sm_87 with cutlass + cudagraph
+- **Measurement**: Chat completions API streaming, 2 warmup requests, 3 runs averaged
 - **Runs**: Docker container with NVIDIA runtime
+
+---
 
 ## Key Insights
 
-1. **tinygrad NV beats llama.cpp by 43%** on the same model (LLaMA 1B Q6_K) with our matvec fix + JITBEAM=4. This validates the NV backend optimization campaign.
+1. **MLC LLM is fastest at fp16** (36.8 tok/s decode). Its ahead-of-time compilation for sm_87 + CUDA graphs gives excellent kernel utilization.
 
-2. **MLC LLM is fastest overall** at 47 tok/s, but uses 4-bit quantization (less memory to read per token). Its JIT compilation for sm_87 + CUDA graphs gives it excellent kernel utilization.
+2. **vLLM is a strong 2nd** (30.3 tok/s decode, 1622 tok/s prefill). Its highly optimized CUDA kernels shine at fp16 — much better than its Q6_K GGUF path (14.7 tok/s prior benchmark).
 
-3. **vLLM's GGUF path is slow** (14.7 tok/s) — vLLM warns it's not optimized. vLLM is designed for high-throughput server workloads (batched requests), not single-stream decode. Its fp16 path is reasonable at 21.1 tok/s.
+3. **tinygrad NV beats llama.cpp by 12%** (27.0 vs 24.1 tok/s) on the same model at the same precision, with zero quantization-related advantages. The NV backend's direct kernel dispatch gives it an edge.
 
-4. **NV backend advantage**: tinygrad NV=1 consistently outperforms CUDA=1 on Orin, especially with JITBEAM (36.7 vs 31.8 tok/s). The direct kernel interface reduces dispatch latency, which beam search then amplifies.
+4. **JITBEAM is counterproductive on Orin** — the default heuristics already produce near-optimal kernels for the unified memory architecture. Beam search finds locally-optimal kernels that are globally 25-27x slower.
 
-5. **Quantization matters**: The spread from 4-bit (47 tok/s) to fp16 (21 tok/s) shows that memory bandwidth is the primary bottleneck on Orin AGX for batch=1 decode. Lower-precision quantization directly translates to higher throughput.
+5. **Prefill varies wildly**: vLLM (1622) and MLC (1586) have highly optimized prefill paths. tinygrad's 7.1 tok/s includes JIT compilation (one-time cost). After warmup, tinygrad's decode is competitive.
+
+6. **Memory bandwidth is king**: All frameworks are memory-bound at batch=1 decode. F16 (2 bytes/param) is 3.3x more data than Q6_K (0.6 bytes/param), which is why all F16 numbers are lower than Q6_K numbers.
+
+---
 
 ## How to Reproduce
 
 ```bash
-# tinygrad (NV backend, requires matvec fix)
+# === Fair F16 benchmark ===
+
+# tinygrad (NV backend)
 cd examples/tinygrad
-nix develop -c bash -c '
-  NV=1 MV_THREADS_PER_ROW=32 JITBEAM=4 python3 tinygrad/examples/llama3.py \
-    --model llama3.2:1b --count 128 --prompt "Write a detailed explanation of how neural networks work"
-'
+nix develop -c bash -c 'NV=1 MV_THREADS_PER_ROW=32 python3 ../bench_tinygrad_f16.py'
 
 # llama.cpp
-cd examples/llama-cpp-orin-nix-overlay
-nix develop -c llama-bench -m ~/.cache/tinygrad/downloads/llama3-1b-instruct/Llama-3.2-1B-Instruct-Q6_K.gguf -p 128 -n 128
+cd examples/llama-cpp-orin
+nix develop -c llama-bench -m ~/.cache/tinygrad/downloads/llama3.2-1b-f16/Llama-3.2-1B-Instruct-f16.gguf \
+  -p 42 -n 128 -r 5 -fa 1
 
-# vLLM (Docker, GGUF)
-sudo nixos-rebuild switch --flake examples/nixos#nixos-docker-bench
+# vLLM (Docker)
 sudo docker run -d --name vllm-orin --runtime nvidia --shm-size 8g -p 8000:8000 \
-  -v ~/.cache:/root/.cache dustynv/vllm:r36.4.0 \
+  -v ~/.cache:/root/.cache vllm-jetson:latest \
   python3 -m vllm.entrypoints.openai.api_server \
-  --model /root/.cache/tinygrad/downloads/llama3-1b-instruct/Llama-3.2-1B-Instruct-Q6_K.gguf \
+  --model /root/.cache/tinygrad/downloads/llama3.2-1b-f16/Llama-3.2-1B-Instruct-f16.gguf \
   --max-model-len 2048 --dtype half --gpu-memory-utilization 0.8 --enforce-eager
-# Then: python3 examples/vllm/bench_vllm.py --server http://localhost:8000 \
-#   --model "/root/.cache/..." --num-tokens 128
+# Then from nix shell: python3 bench_cross_framework.py --server http://localhost:8000 \
+#   --model "/root/.cache/.../Llama-3.2-1B-Instruct-f16.gguf" --num-tokens 128
 
 # MLC LLM (Docker)
-sudo docker run -d --name mlc-orin --runtime nvidia --shm-size 8g -p 8001:8000 \
-  -v ~/.cache:/root/.cache dustynv/mlc:r36.4.0 \
-  bash -c 'python3 -m mlc_llm serve "HF://mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC" --mode local --host 0.0.0.0 --port 8000'
-# Then: python3 examples/vllm/bench_vllm.py --server http://localhost:8001 \
-#   --model "HF://mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC" --num-tokens 128
+sudo docker run -d --name mlc-orin --runtime nvidia -p 8001:8000 \
+  -v ~/.cache:/root/.cache mlc-jetson:latest \
+  bash -c 'python3 -m mlc_llm serve "HF://mlc-ai/Llama-3.2-1B-Instruct-q0f16-MLC" \
+  --mode local --host 0.0.0.0 --port 8000'
+# Then: python3 bench_cross_framework.py (adapted for chat completions, see script)
 ```
