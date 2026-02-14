@@ -5,13 +5,9 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     jetpack-nixos.url = "github:anduril/jetpack-nixos";
     flake-utils.url = "github:numtide/flake-utils";
-    tinygrad-src = {
-      url = "github:tinygrad/tinygrad/cc9bf8ccbc0b7eb0e3b8510d475fa56263ef8cab";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, jetpack-nixos, flake-utils, tinygrad-src }:
+  outputs = { self, nixpkgs, jetpack-nixos, flake-utils }:
     flake-utils.lib.eachSystem [ "aarch64-linux" ] (system:
       let
         pkgs = import nixpkgs {
@@ -21,29 +17,6 @@
         };
         jetpack = pkgs.nvidia-jetpack6;
         cuda = jetpack.cudaPackages;
-
-        # Build tinygrad from source using Nix
-        tinygrad = pkgs.python3Packages.buildPythonPackage {
-          pname = "tinygrad";
-          version = "0.12.0";
-          src = tinygrad-src;
-          format = "pyproject";
-
-          nativeBuildInputs = [
-            pkgs.python3Packages.setuptools
-          ];
-
-          propagatedBuildInputs = [
-            pkgs.python3Packages.numpy
-            pkgs.python3Packages.tqdm
-            pkgs.python3Packages.requests
-          ];
-
-          # Skip tests during build
-          doCheck = false;
-
-          pythonImportsCheck = [ "tinygrad" ];
-        };
 
         # Pre-built PyTorch CPU wheel from PyTorch's official aarch64 builds.
         # This avoids the 1-4 hour source build that ps.torch triggers.
@@ -84,7 +57,6 @@
         };
 
         pythonEnv = pkgs.python3.withPackages (ps: [
-          tinygrad
           torch-bin
           ps.numpy
           ps.tqdm
@@ -141,12 +113,23 @@
           ];
 
           shellHook = ''
-            # Add nested tinygrad folder to PYTHONPATH so 'extra' module can be found
-            # This allows 'from extra.bench_log import ...' to work in tinygrad examples
+            # Local-source workflow: tinygrad is imported from ./tinygrad checkout.
+            # This intentionally avoids a pinned nixpkgs tinygrad package so your
+            # local branch changes are always what Python imports.
+            if [ ! -d "$PWD/tinygrad/tinygrad" ]; then
+              echo ""
+              echo "ERROR: local tinygrad checkout not found at: $PWD/tinygrad"
+              echo "Run this shell from examples/tinygrad and ensure submodules are present:"
+              echo "  git submodule update --init --recursive"
+              echo ""
+              return 1
+            fi
+
             export PYTHONPATH="$PWD/tinygrad:$PYTHONPATH"
             
             echo ""
-            echo "=== tinygrad dev shell (Orin AGX / CUDA 12.6) ==="
+            echo "=== tinygrad dev shell (Orin AGX / CUDA 12.6, local source mode) ==="
+            echo "Using tinygrad from: $PWD/tinygrad"
             echo ""
             echo "Quick test (CPU):"
             echo "  python3 -c 'from tinygrad import Tensor; print(Tensor([1,2,3]).numpy())'"
@@ -154,11 +137,10 @@
             echo "Quick test (CUDA):"
             echo "  CUDA=1 python3 -c 'from tinygrad import Tensor; print(Tensor([1,2,3]).numpy())'"
             echo ""
-            echo "LLM examples (clone tinygrad repo first):"
-            echo "  git clone --depth 1 https://github.com/tinygrad/tinygrad.git"
+            echo "LLM examples:"
             echo "  cd tinygrad && CUDA=1 python3 examples/gpt2.py --count 20"
             echo ""
-            echo "PYTHONPATH includes $PWD/tinygrad for the 'extra' module."
+            echo "PYTHONPATH includes $PWD/tinygrad for tinygrad + extra modules."
             echo ""
           '';
         };

@@ -98,8 +98,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "jetpack-nixos": "jetpack-nixos",
-        "nixpkgs": "nixpkgs_2",
-        "tinygrad-src": "tinygrad-src"
+        "nixpkgs": "nixpkgs_2"
       }
     },
     "systems": {
@@ -114,23 +113,6 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
-        "type": "github"
-      }
-    },
-    "tinygrad-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1770701717,
-        "narHash": "sha256-gwh3vU8JY4PqJKV0R53cPwCaUYmh9xvhLFdOkglhWmw=",
-        "owner": "tinygrad",
-        "repo": "tinygrad",
-        "rev": "cc9bf8ccbc0b7eb0e3b8510d475fa56263ef8cab",
-        "type": "github"
-      },
-      "original": {
-        "owner": "tinygrad",
-        "repo": "tinygrad",
-        "rev": "cc9bf8ccbc0b7eb0e3b8510d475fa56263ef8cab",
         "type": "github"
       }
     }
