@@ -2,7 +2,7 @@
   description = "llama.cpp for Jetson Orin AGX";
 
   inputs = {
-    llama-cpp.url = "github:ggml-org/llama.cpp";
+    llama-cpp.url = "github:ggml-org/llama.cpp/9a5f57795c01c6e67a53eeedeae67ed63aaf7f8e";
   };
 
   outputs = { self, llama-cpp, ... }:

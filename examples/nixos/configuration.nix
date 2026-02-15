@@ -13,17 +13,25 @@
   # Use the systemd-boot EFI boot loader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  
+  # Enable kernel console output on serial UART
+  boot.kernelParams = [ "console=ttyTCU0,115200" ];
 
   # networking.hostName = "nixos"; # Define your hostname.
 
   # Configure network connections interactively with nmcli or nmtui.
+  # networking.wireless.enable = true; # this gets wifi driver patches
   networking.networkmanager.enable = false;
 
   # Jetson Hardware (required)
   hardware.nvidia-jetpack.enable = true;
   hardware.nvidia-jetpack.som = "orin-agx";
   hardware.nvidia-jetpack.carrierBoard = "devkit";
+  hardware.nvidia-jetpack.configureCuda = true;
   hardware.graphics.enable = true;
+
+  # vscode-server
+  programs.nix-ld.enable = true;
 
   # User account
   users.users.spencer = {
@@ -33,6 +41,46 @@
     openssh.authorizedKeys.keys = [
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIvr/COHf/R7Ej1HB9pYdAT2p4M8r7uM3vFetWtT5Sed spencer.willett@tp-link.com"
+    ];
+  };
+
+  # AI agent account
+  users.users.agent = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "video" "render" "networkmanager" ];
+    initialPassword = "changeme";
+    openssh.authorizedKeys.keys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINPyBqfrozySw04RUlu0x2Gdql3vcTx6LjcpDRQVUk4A spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF1+uXgJHBbhFa8ZGVrSwb60OE63tViYKvgeKo2ozCCA spencer.willett15@gmail.com"
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIvr/COHf/R7Ej1HB9pYdAT2p4M8r7uM3vFetWtT5Sed spencer.willett@tp-link.com"
+    ];
+  };
+
+  # Serial console for agent user (ttyTCU0 is the Orin's debug UART)
+  systemd.services."serial-getty@ttyTCU0" = {
+    overrideStrategy = "asDropin";
+    enable = true;
+    wantedBy = [ "getty.target" ];
+    serviceConfig.ExecStart = [
+      ""
+      "${pkgs.util-linux}/bin/agetty --autologin agent --noclear --keep-baud 115200,38400,9600 %I $TERM"
+    ];
+  };
+
+  security.sudo = {
+    enable = true;
+    wheelNeedsPassword = true;
+    extraRules = [
+      {
+        users = [ "agent" "spencer" ];
+        commands = [
+          {
+            command = "ALL";
+            options = [ "NOPASSWD" ];
+          }
+        ];
+      }
     ];
   };
 
@@ -92,10 +140,11 @@
 
   # List packages installed in system profile.
   # You can use https://search.nixos.org/ to find more packages (and options).
-  # environment.systemPackages = with pkgs; [
-  #   vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #   wget
-  # ];
+  environment.systemPackages = with pkgs; [
+    vim
+    git
+    file
+  ];
 
   # Some programs need SUID wrappers, can be configured further or are
   # started in user sessions.
@@ -111,7 +160,7 @@
   # services.openssh.enable = true;
 
   # Open ports in the firewall.
-  networking.firewall.allowedTCPPorts = [ 22 5000 ];
+  networking.firewall.allowedTCPPorts = [ 22 3301 4317 4318 5000 8889 9090 9100 9101];
   # networking.firewall.allowedUDPPorts = [ ... ];
   # Or disable the firewall altogether.
   # networking.firewall.enable = false;

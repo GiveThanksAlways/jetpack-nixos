@@ -12,6 +12,8 @@ Each subfolder is a self-contained flake. Pick the one that fits your use case.
 | `llama-cpp-orin/` | Minimal flake -- builds llama.cpp from upstream with CUDA/OpenSSL for Orin. Dev shell only. |
 | `llama-cpp-orin-nix-overlay/` | Full-featured overlay with wrapper scripts (`qwen3-coder`, `qwen3-server`, `llama-benchmark`). Reusable via `overlays.default`. |
 | `vLLM/` | vLLM dev shell + NixOS module (`services.vllm-serving`). Import the module into your system flake for production serving. |
+| `tinygrad/` | Tinygrad dev shell with CUDA + NV backend. Clone-and-go for LLM examples (GPT-2, LLaMA) on Orin AGX. |
+| `telemetry-viewer/` | SSH tunnel script to view Grafana dashboards from your PC. One command, then open Chrome. |
 
 ## Quick reference
 
@@ -29,4 +31,10 @@ cd llama-cpp-orin-nix-overlay && nix develop
 
 # vLLM dev shell
 cd vLLM && nix develop
+
+# tinygrad dev shell (CUDA + NV backend)
+cd tinygrad && nix develop
+
+# view telemetry dashboards from your PC
+cd telemetry-viewer && ./connect-telemetry.sh <jetson-ip>
 ```
