@@ -1,0 +1,181 @@
+{
+  "backend": "CUDA",
+  "timestamp": "2026-02-11 05:29:20",
+  "device": "Jetson Orin AGX 64GB",
+  "matmul": [
+    {
+      "size": 256,
+      "dtype": "dtypes.float",
+      "gflops": 10.5,
+      "median_ms": 3.204782999091549,
+      "mean_ms": 3.2779515800939407,
+      "min_ms": 2.797706001729239,
+      "p99_ms": 3.9808589972381014,
+      "iters": 50
+    },
+    {
+      "size": 512,
+      "dtype": "dtypes.float",
+      "gflops": 28.9,
+      "median_ms": 9.285322001232998,
+      "mean_ms": 9.013663220539456,
+      "min_ms": 6.324639001832111,
+      "p99_ms": 9.700529000838287,
+      "iters": 50
+    },
+    {
+      "size": 1024,
+      "dtype": "dtypes.float",
+      "gflops": 89.7,
+      "median_ms": 23.94397199896048,
+      "mean_ms": 25.07293785951333,
+      "min_ms": 20.627634999982547,
+      "p99_ms": 36.36767799980589,
+      "iters": 50
+    },
+    {
+      "size": 2048,
+      "dtype": "dtypes.float",
+      "gflops": 132.7,
+      "median_ms": 129.44525400234852,
+      "mean_ms": 129.44667205047153,
+      "min_ms": 129.23725100336014,
+      "p99_ms": 130.0453590010875,
+      "iters": 20
+    },
+    {
+      "size": 4096,
+      "dtype": "dtypes.float",
+      "gflops": 138.1,
+      "median_ms": 994.9098780016357,
+      "mean_ms": 994.9425027503821,
+      "min_ms": 994.5577469989075,
+      "p99_ms": 995.4192690020136,
+      "iters": 20
+    },
+    {
+      "size": 1024,
+      "dtype": "dtypes.half",
+      "gflops": 307.3,
+      "median_ms": 6.988551998801995,
+      "mean_ms": 6.8715301001793705,
+      "min_ms": 5.2067649994569365,
+      "p99_ms": 8.313178997923387,
+      "iters": 50
+    },
+    {
+      "size": 2048,
+      "dtype": "dtypes.half",
+      "gflops": 621.9,
+      "median_ms": 27.62642499874346,
+      "mean_ms": 27.043747050265665,
+      "min_ms": 16.94188200053759,
+      "p99_ms": 28.149601002951385,
+      "iters": 20
+    },
+    {
+      "size": 4096,
+      "dtype": "dtypes.half",
+      "gflops": 1509.2,
+      "median_ms": 91.06630599853816,
+      "mean_ms": 91.00943289940915,
+      "min_ms": 89.72471800007042,
+      "p99_ms": 91.76132399807102,
+      "iters": 20
+    }
+  ],
+  "bandwidth": [
+    {
+      "size_mb": 1,
+      "copyin_gb_s": 0.31,
+      "copyin_ms": 3.409,
+      "copyout_gb_s": 1.82,
+      "copyout_ms": 0.575,
+      "d2d_gb_s": 0.52,
+      "d2d_ms": 2.016,
+      "alloc_ms": 1.925
+    },
+    {
+      "size_mb": 16,
+      "copyin_gb_s": 2.12,
+      "copyin_ms": 7.922,
+      "copyout_gb_s": 4.04,
+      "copyout_ms": 4.152,
+      "d2d_gb_s": 4.83,
+      "d2d_ms": 3.475,
+      "alloc_ms": 3.849
+    },
+    {
+      "size_mb": 256,
+      "copyin_gb_s": 3.56,
+      "copyin_ms": 75.401,
+      "copyout_gb_s": 1.34,
+      "copyout_ms": 199.696,
+      "d2d_gb_s": 15.79,
+      "d2d_ms": 16.999,
+      "alloc_ms": 11.232
+    }
+  ],
+  "kernel_launch": {
+    "trivial_median_us": 950.1,
+    "trivial_p99_us": 2101.8,
+    "trivial_min_us": 933.8
+  },
+  "elementwise": [
+    {
+      "op": "add",
+      "elements": 1000000,
+      "gb_s": 5.77,
+      "median_ms": 1.387
+    },
+    {
+      "op": "mul",
+      "elements": 1000000,
+      "gb_s": 5.57,
+      "median_ms": 1.435
+    },
+    {
+      "op": "exp",
+      "elements": 1000000,
+      "gb_s": 4.53,
+      "median_ms": 1.766
+    },
+    {
+      "op": "relu",
+      "elements": 1000000,
+      "gb_s": 3.58,
+      "median_ms": 2.236
+    },
+    {
+      "op": "add",
+      "elements": 10000000,
+      "gb_s": 17.4,
+      "median_ms": 4.597
+    },
+    {
+      "op": "mul",
+      "elements": 10000000,
+      "gb_s": 16.67,
+      "median_ms": 4.798
+    },
+    {
+      "op": "exp",
+      "elements": 10000000,
+      "gb_s": 13.72,
+      "median_ms": 5.833
+    },
+    {
+      "op": "relu",
+      "elements": 10000000,
+      "gb_s": 10.96,
+      "median_ms": 7.302
+    }
+  ],
+  "model_inference": {
+    "model": "MLP-784-256-128-10",
+    "batch_size": 64,
+    "median_ms": 10.005,
+    "p99_ms": 10.2,
+    "throughput_samples_per_sec": 6397.0
+  }
+}

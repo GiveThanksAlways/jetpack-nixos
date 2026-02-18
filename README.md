@@ -10,6 +10,7 @@ This repository packages components from NVIDIA's [JetPack SDK](https://develope
    - Multimedia: hardware accelerated encoding/decoding with V4L2 and gstreamer plugins
    - Graphics: Wayland, GBM, EGL, Vulkan
    - Power/fan control: nvpmodel, nvfancontrol
+   - **Observability**: Native NixOS telemetry with fine-grained GPU monitoring (see [docs/SETUP.md](docs/SETUP.md))
 
 This package supports JetPack 5, 6, and 7. It works with NVIDIA's developer kits supported by these versions only:
 
@@ -116,6 +117,57 @@ And include this in your conf, i.e. `configuration.nix`
   hardware.graphics.enable = true;
 }
 ```
+
+### Example flake for Qwen3 TTS custom voice
+
+If you want a flake-based Python environment to run [Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) on Jetson, you can start from:
+
+```nix
+{
+  description = "Qwen3 custom voice runtime on jetpack-nixos";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    jetpack.url = "github:anduril/jetpack-nixos/master";
+    jetpack.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, ... }:
+    let
+      system = "aarch64-linux";
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+      python = pkgs.python3.withPackages (ps: with ps; [
+        pip
+        setuptools
+        wheel
+      ]);
+    in
+    {
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          python
+          ffmpeg
+          git
+        ];
+      };
+    };
+}
+```
+
+Then run:
+```shell
+$ nix develop
+$ python -m venv .venv && source .venv/bin/activate
+$ pip install --upgrade pip
+$ pip install torch transformers accelerate datasets soundfile sentencepiece
+$ python -c "import torch; print('cuda:', torch.cuda.is_available())"
+# Then run the inference example from the model card with model='Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
+```
+
+On NixOS with this repository enabled, ensure `hardware.nvidia-jetpack.enable = true;` and `hardware.graphics.enable = true;` are set so CUDA and userspace GPU libraries are available.
 
 The Xavier AGX contains some critical firmware paritions on the eMMC.
 If you are installing NixOS to the eMMC, be sure to not remove these partitions!
@@ -249,6 +301,38 @@ format. By default, there will be a single device setup of the kind
 `--device=nvidia.com/gpu=all` when starting your container.
 
 If you are using Podman, it is recommended to add a dependency to any systemd services that run podman to specify `After=nvidia-container-toolkit-cdi-generator.service`. Due to Podman's daemonless nature, this ensures that the CDI configuration files are generated prior to container start.
+
+### Native NixOS Telemetry
+
+Pure NixOS telemetry stack provides fine-grained GPU monitoring with zero Docker dependencies.
+
+**Quick Start:**
+```bash
+sudo nixos-rebuild switch --flake github:anduril/jetpack-nixos#jetson-telemetry
+```
+
+Or add to your configuration:
+```nix
+services.jetson-telemetry = {
+  enable = true;
+  enableTegrastats = true;      # Fine-grained GPU metrics (500ms)
+  enableNodeExporter = true;     # System metrics
+};
+```
+
+Access Grafana at `http://localhost:3301` after activation.
+
+**Features:**
+- Pure NixOS systemd services (no Docker)
+- Fine-grained GPU telemetry (500ms sampling)
+- GPU, EMC, VIC, APE frequency monitoring
+- Per-core CPU usage and frequency
+- Temperature monitoring (all sensors)
+- Power consumption by rail
+- Auto-provisioned GPU dashboard
+- Grafana WebUI
+
+For complete setup guide, see [docs/SETUP.md](docs/SETUP.md).
 
 ### Using the kernel package sets
 
