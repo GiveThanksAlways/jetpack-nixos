@@ -19,6 +19,7 @@ let
     filter
     makeScope
     mapAttrsToList
+    optionalAttrs
     packagesFromDirectoryRecursive
     versionAtLeast
     versionOlder
@@ -176,6 +177,14 @@ makeScope final.newScope (self: {
   # TODO(jared): deprecate this
   devicePkgsFromNixosConfig = config: config.system.build.jetsonDevicePkgs;
 }
+  # PyTorch pre-built wheel for JetPack 6 (CUDA 12.6, Python 3.10, aarch64-linux only).
+  # Not included for JetPack 5 since that requires a different wheel (Python 3.8, CUDA 11.4).
+  // lib.optionalAttrs (l4tAtLeast "36") {
+    torch-jetson = final.callPackage ./pkgs/python-packages/torch-jetson {
+      inherit (self) l4t-core l4t-cuda;
+      inherit (self.cudaPackages) cuda_cudart libcublas libcufft cudnn;
+    };
+  }
   # Add the L4T packages
   # NOTE: Since this is adding packages to the top-level, and callPackage's auto args functionality draws from that
   # attribute set, we cannot use self.callPackages because we would end up with infinite recursion.

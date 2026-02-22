@@ -180,6 +180,10 @@
           iso_minimal = self.nixosConfigurations.installer_minimal.config.system.build.isoImage;
           iso_minimal_jp5 = self.nixosConfigurations.installer_minimal_jp5.config.system.build.isoImage;
           iso_minimal_jp7 = self.nixosConfigurations.installer_minimal_jp7.config.system.build.isoImage;
+
+          # PyTorch 2.6 pre-built for JetPack 6 (CUDA 12.6, Python 3.10, aarch64-linux).
+          # Use `nix build .#packages.aarch64-linux.torch-jetson` on your Orin device.
+          inherit (self.legacyPackages.aarch64-linux.nvidia-jetpack6) torch-jetson;
         };
       };
 
