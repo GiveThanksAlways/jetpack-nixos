@@ -117,6 +117,57 @@ And include this in your conf, i.e. `configuration.nix`
 }
 ```
 
+### Example flake for Qwen3 TTS custom voice
+
+If you want a flake-based Python environment to run [Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) on Jetson, you can start from:
+
+```nix
+{
+  description = "Qwen3 custom voice runtime on jetpack-nixos";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    jetpack.url = "github:anduril/jetpack-nixos/master";
+    jetpack.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, ... }:
+    let
+      system = "aarch64-linux";
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+      python = pkgs.python3.withPackages (ps: with ps; [
+        pip
+        setuptools
+        wheel
+      ]);
+    in
+    {
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          python
+          ffmpeg
+          git
+        ];
+      };
+    };
+}
+```
+
+Then run:
+```shell
+$ nix develop
+$ python -m venv .venv && source .venv/bin/activate
+$ pip install --upgrade pip
+$ pip install torch transformers accelerate datasets soundfile sentencepiece
+$ python -c "import torch; print('cuda:', torch.cuda.is_available())"
+# Then run the inference example from the model card with model='Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'
+```
+
+On NixOS with this repository enabled, ensure `hardware.nvidia-jetpack.enable = true;` and `hardware.graphics.enable = true;` are set so CUDA and userspace GPU libraries are available.
+
 The Xavier AGX contains some critical firmware paritions on the eMMC.
 If you are installing NixOS to the eMMC, be sure to not remove these partitions!
 You can remove and replace the "UDA" partition if you want to install NixOS to the eMMC.
